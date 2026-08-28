@@ -37,6 +37,7 @@ import { AuthModal, AuthMode } from './components/AuthModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PostBiteExperienceModal } from './components/PostBiteExperienceModal';
+import { BiteBotModal } from './components/BiteBotModal';
 import { PostBiteResultData } from './types';
 import { KnowledgeTrackId, KNOWLEDGE_TRACKS, META_KNOWLEDGE_TITLE } from './data/knowledgeQuestions';
 import { saveKnowledgeProgressToDb } from './services/firebaseDb';
@@ -73,6 +74,7 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<AuthMode>('entry');
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [showBiteBotModal, setShowBiteBotModal] = useState(false);
   const [postBiteResult, setPostBiteResult] = useState<PostBiteResultData | null>(null);
 
   // Monitor Firebase Auth State
@@ -471,6 +473,7 @@ export default function App() {
           districtName={passport.districtName}
           xp={user.xp}
           onOpenMenu={() => setIsDrawerOpen(true)}
+          onOpenBiteBot={() => setShowBiteBotModal(true)}
           onOpenNotifications={() => {
             setActiveToast({
               title: 'Thông báo',
@@ -503,6 +506,7 @@ export default function App() {
               user={user}
               isRadarOpen={activeTab === 'radar'}
               onRadarOpenChange={(open) => setActiveTab(open ? 'radar' : 'explore')}
+              onOpenBiteBot={() => setShowBiteBotModal(true)}
             />
           </ErrorBoundary>
         )}
@@ -555,6 +559,7 @@ export default function App() {
               setShowAuthModal(true);
             }}
             onOpenPersonalization={() => setShowOnboardingModal(true)}
+            onOpenBiteBot={() => setShowBiteBotModal(true)}
             onGoogleSignIn={handleGoogleSignIn}
             onGoogleSignOut={handleGoogleSignOut}
             isLoggedIn={isLoggedIn}
@@ -565,7 +570,11 @@ export default function App() {
 
       {/* 4. Persistent Bottom Navigation (Hidden in full-bleed Camera mode) */}
       {activeTab !== 'camera' && (
-        <BottomNavBar activeTab={activeTab} onTabChange={(tab) => setActiveTab(tab)} />
+        <BottomNavBar
+          activeTab={activeTab}
+          onTabChange={(tab) => setActiveTab(tab)}
+          isNearActiveVenue={Boolean(selectedPlace)}
+        />
       )}
 
       {/* 5. Navigation Drawer (Slide from Left) */}
@@ -581,6 +590,7 @@ export default function App() {
           setAuthModalInitialMode('entry');
           setShowAuthModal(true);
         }}
+        onOpenBiteBot={() => setShowBiteBotModal(true)}
         onGoogleSignIn={handleGoogleSignIn}
         onGoogleSignOut={handleGoogleSignOut}
         isLoggedIn={isLoggedIn}
@@ -652,6 +662,20 @@ export default function App() {
           }}
         />
       )}
+
+      {/* 13. BiteBot - Professional Culinary AI Concierge Modal */}
+      <BiteBotModal
+        isOpen={showBiteBotModal}
+        onClose={() => setShowBiteBotModal(false)}
+        places={places}
+        userLocation={{ latitude: 21.0285, longitude: 105.7958, district: passport.districtName || 'Cầu Giấy' }}
+        userPreferences={user.foodPreferences}
+        onSelectPlace={(place) => {
+          setSelectedPlace(place);
+          setActiveTab('explore');
+          setShowBiteBotModal(false);
+        }}
+      />
     </div>
   );
 }

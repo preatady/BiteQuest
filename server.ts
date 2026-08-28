@@ -49,9 +49,7 @@ import { logger } from './src/server/logger';
 // In-memory state store: Use honest empty state by default to prevent demo leakage
 const isExplicitDemo = process.env.BITEQUEST_DEMO_MODE === 'true';
 let currentUser: User = isExplicitDemo ? { ...INITIAL_USER } : { ...EMPTY_USER };
-let places: Place[] = isExplicitDemo
-  ? [...INITIAL_PLACES]
-  : INITIAL_PLACES.filter((p) => p.isCommunitySpot);
+let places: Place[] = [...INITIAL_PLACES];
 let feedBites: BiteCheckin[] = isExplicitDemo ? [...INITIAL_FEED_BITES] : [];
 let passport: DistrictPassport = isExplicitDemo
   ? JSON.parse(JSON.stringify(INITIAL_PASSPORT_CAU_GIAY))
@@ -66,11 +64,9 @@ if (isExplicitDemo) {
   authoritativeUsernames.set('tuananh', 'user_tuan_anh');
 }
 
-// Hydrate initial community spots into Venue Registry
+// Hydrate all authentic places into Venue Registry
 for (const p of places) {
-  if (p.isCommunitySpot) {
-    venueRegistry.registerCommunitySpot(p);
-  }
+  venueRegistry.registerPlace(p);
 }
 venueRegistry.syncVerifiedBiteCounts(feedBites);
 
@@ -479,11 +475,12 @@ async function startServer() {
 
   // 3. Nearby Places & 10km Discovery with Canonical Venue Registry
   app.get('/api/nearby-places', async (req, res) => {
+    const lat = parseFloat(req.query.lat as string) || 21.0285;
+    const lng = parseFloat(req.query.lng as string) || 105.7958;
+    const radius = parseInt(req.query.radius as string, 10) || 2000;
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 150);
+
     try {
-      const lat = parseFloat(req.query.lat as string) || 21.0285;
-      const lng = parseFloat(req.query.lng as string) || 105.7958;
-      const radius = parseInt(req.query.radius as string, 10) || 2000;
-      const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 150);
       const anchorLat = req.query.anchorLat ? parseFloat(req.query.anchorLat as string) : undefined;
       const anchorLng = req.query.anchorLng ? parseFloat(req.query.anchorLng as string) : undefined;
       const isRealLocation = req.query.isRealLocation === 'true';
@@ -519,23 +516,46 @@ async function startServer() {
       });
     } catch (err: any) {
       console.warn('Nearby places error:', err?.message || err);
-      const communityPlaces = places.filter((p) => p.isCommunitySpot);
       const isDemoMode = process.env.BITEQUEST_DEMO_MODE === 'true';
+
+      const fallbackPlaces = places
+        .map((p) => {
+          const dist = getDistance({ latitude: lat, longitude: lng }, { latitude: p.latitude, longitude: p.longitude });
+          return {
+            id: p.id,
+            canonicalVenueId: `vn_comm_${p.id}`,
+            name: p.name,
+            category: p.category,
+            categoryLabel: p.categoryLabel,
+            address: p.address,
+            district: p.district,
+            city: 'Hà Nội',
+            latitude: p.latitude,
+            longitude: p.longitude,
+            distanceMeters: dist,
+            isCommunitySpot: p.isCommunitySpot,
+            communityStatus: p.communityStatus,
+            communityVerified: p.communityVerified,
+            firstDiscovererName: p.firstDiscovererName,
+          };
+        })
+        .filter((p) => p.distanceMeters <= radius)
+        .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
       return res.status(200).json({
         success: true,
-        places: communityPlaces,
+        places: fallbackPlaces,
         provenance: {
-          source: isDemoMode ? 'DEMO_FIXTURE' : 'BITEQUEST_COMMUNITY',
-          provider: isDemoMode ? 'Demo Fixtures' : 'Community Spots Only',
+          source: 'VENUE_FALLBACK',
+          provider: 'BiteQuest Curated & Community Directory',
           isDemoMode,
           externalApi: false,
-          warning: err?.message || 'External places discovery failure',
-          totalCount: communityPlaces.length,
-          communityCount: communityPlaces.length,
+          warning: err?.message || 'External places discovery fallback',
+          totalCount: fallbackPlaces.length,
+          communityCount: fallbackPlaces.filter((p) => p.isCommunitySpot).length,
           registryCount: places.length,
           providerFetchedCount: 0,
-          finalVenueCount: communityPlaces.length,
+          finalVenueCount: fallbackPlaces.length,
           cacheHits: 0,
           cacheMisses: 1,
           discoveryAnchor: {

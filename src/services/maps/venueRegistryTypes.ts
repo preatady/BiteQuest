@@ -62,7 +62,7 @@ export interface DiscoveryProvenance {
     longitude: number;
     isRealUserLocation: boolean;
     distanceToQueryMeters?: number;
-    maxDiscoveryRadiusMeters: number;
+    maxDiscoveryRadiusMeters?: number;
   };
   warning?: string;
 }

@@ -12,6 +12,7 @@ interface ProfileViewProps {
   onOpenJudgeDev?: () => void;
   onOpenAuthModal?: () => void;
   onOpenPersonalization?: () => void;
+  onOpenBiteBot?: () => void;
   onGoogleSignIn?: () => void;
   onGoogleSignOut?: () => void;
   isLoggedIn?: boolean;
@@ -29,6 +30,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onOpenJudgeDev,
   onOpenAuthModal,
   onOpenPersonalization,
+  onOpenBiteBot,
   onGoogleSignIn,
   onGoogleSignOut,
   isLoggedIn = false,
@@ -451,6 +453,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {/* SECTION 6: QUICK ACTIONS & PREFERENCES                    */}
       {/* ========================================================= */}
       <section className="bg-white rounded-3xl p-4 shadow-[0_4px_20px_rgba(45,41,38,0.06)] border border-[#2D2926]/5 flex flex-col divide-y divide-[#2D2926]/5">
+        {onOpenBiteBot && (
+          <button
+            type="button"
+            onClick={onOpenBiteBot}
+            className="w-full py-3 px-2 flex items-center justify-between text-left hover:bg-[#FF6B35]/5 rounded-xl transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#FF6B35] to-[#FFA07A] flex items-center justify-center text-white text-xs shadow-xs">
+                ✨
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-heading text-xs font-bold text-[#FF6B35]">BiteBot - Trợ Lý Ẩm Thực AI</span>
+                  <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full">Gemini 3.7</span>
+                </div>
+                <p className="text-[11px] text-[#8D7168] mt-0.5">Tư vấn món ngon, quán cafe, ngân sách thông minh</p>
+              </div>
+            </div>
+            <span className="material-symbols-outlined text-[#FF6B35] text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+          </button>
+        )}
+
         {onNavigateToFriends && (
           <button
             type="button"

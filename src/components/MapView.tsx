@@ -31,6 +31,14 @@ import { OpportunityCarousel } from './OpportunityCarousel';
 import { DiscoveryPeekSheet } from './DiscoveryPeekSheet';
 import { EMPTY_USER, EMPTY_PASSPORT_CAU_GIAY } from '../data/seedData';
 import { useExploreNearbyPlaces } from '../hooks/useExploreNearbyPlaces';
+import { GoogleMapsSearchBar } from './GoogleMapsSearchBar';
+import { CategoryFilterBar } from './CategoryFilterBar';
+import { buildGoogleMapsDirectionsUrl } from '../utils/navigationHelper';
+import {
+  scanRenderedMapPlaces,
+  convertVectorFeatureToPlace,
+  isFoodOrVenueFeature,
+} from '../services/maps/vectorTileScanner';
 
 interface MapViewProps {
   places: Place[];
@@ -101,23 +109,25 @@ const unclusteredCategoryIconLayer: any = {
   type: 'symbol',
   source: 'background-pois',
   filter: ['!', ['has', 'point_count']],
-  minzoom: 13,
+  minzoom: 11.5,
   layout: {
-    'icon-image': ['coalesce', ['get', 'iconName'], 'icon-other_food'],
+    'icon-image': ['coalesce', ['get', 'iconName'], 'icon-other_food-unvisited'],
     'icon-size': [
       'interpolate',
       ['linear'],
       ['zoom'],
+      11.5,
+      0.65,
       13,
-      0.75,
+      0.8,
       15,
-      0.9,
+      0.95,
       17,
-      1.0,
+      1.05,
     ],
     'icon-allow-overlap': false,
     'icon-ignore-placement': false,
-    'icon-padding': 2,
+    'icon-padding': 1.5,
   },
 };
 
@@ -127,7 +137,7 @@ const ambientVenueLabelLayer: any = {
   type: 'symbol',
   source: 'background-pois',
   filter: ['!', ['has', 'point_count']],
-  minzoom: 14,
+  minzoom: 12.5,
   layout: {
     'text-field': ['get', 'name'],
     'text-font': ['Noto Sans Regular'],
@@ -135,23 +145,30 @@ const ambientVenueLabelLayer: any = {
       'interpolate',
       ['linear'],
       ['zoom'],
-      14,
-      10,
-      16,
-      11.5,
-      17,
       12.5,
+      9.5,
+      14,
+      10.5,
+      15,
+      12,
+      17,
+      13,
     ],
     'text-offset': [0, 1.25],
     'text-anchor': 'top',
-    'text-max-width': 8.5,
+    'text-max-width': 9.5,
     'text-padding': 2,
     'text-optional': true,
     'text-allow-overlap': false,
     'text-ignore-placement': false,
   },
   paint: {
-    'text-color': '#1C1917',
+    'text-color': [
+      'case',
+      ['==', ['get', 'isVisited'], 1],
+      '#0F172A',
+      '#57534E',
+    ],
     'text-halo-color': '#FFFFFF',
     'text-halo-width': 2.5,
     'text-halo-blur': 0.5,
@@ -159,23 +176,23 @@ const ambientVenueLabelLayer: any = {
       'interpolate',
       ['linear'],
       ['zoom'],
+      12.5,
+      0.75,
       14,
-      0.8,
+      0.9,
       15,
-      0.95,
-      16,
       1.0,
     ],
   },
 };
 
-// Far zoom subtle dot layer when zoom < 13
+// Far zoom subtle dot layer when zoom < 12.5
 const unclusteredFarCircleLayer: any = {
   id: 'unclustered-far-circle',
   type: 'circle',
   source: 'background-pois',
   filter: ['!', ['has', 'point_count']],
-  maxzoom: 13,
+  maxzoom: 12.5,
   paint: {
     'circle-color': ['get', 'color'],
     'circle-radius': 3.5,
@@ -200,6 +217,7 @@ export const MapView: React.FC<MapViewProps> = ({
   user = EMPTY_USER,
   isRadarOpen = false,
   onRadarOpenChange,
+  onOpenBiteBot,
 }) => {
   const [exploreMode, setExploreMode] = useState<ExploreMode>('radar');
   const [searchQuery, setSearchQuery] = useState('');
@@ -244,19 +262,34 @@ export const MapView: React.FC<MapViewProps> = ({
     isBeyondBoundary,
     lastFetchedCenter,
     fetchNearbyPOIs,
+    addDiscoveredPOIs,
   } = useExploreNearbyPlaces();
   const [selectedBackgroundPOI, setSelectedBackgroundPOI] = useState<UnifiedPlace | null>(null);
   const [viewportCenter, setViewportCenter] = useState<{ latitude: number; longitude: number }>(FALLBACK_CENTER);
-  const [searchAreaError, setSearchAreaError] = useState<boolean>(false);
+  const [viewportRadius, setViewportRadius] = useState<number>(2500);
+  const [isPioneerBannerDismissed, setIsPioneerBannerDismissed] = useState<boolean>(false);
+  const moveEndDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper to calculate the viewport frame radius (distance from center to visible bounds)
+  const calculateViewportRadius = useCallback((): number => {
+    const map = mapRef.current?.getMap();
+    if (!map) return 3000;
+    try {
+      const bounds = map.getBounds();
+      const ne = bounds.getNorthEast();
+      const center = map.getCenter();
+      const spanM = getDistance(
+        { latitude: center.lat, longitude: center.lng },
+        { latitude: ne.lat, longitude: ne.lng }
+      );
+      // Min 1200m (zoomed in), Max 6500m (when viewing town / city level)
+      return Math.min(Math.max(Math.round(spanM), 1200), 6500);
+    } catch {
+      return 3000;
+    }
+  }, []);
 
   const isVenueSelected = Boolean(selectedPlace || selectedBackgroundPOI);
-  const isPannedAboveThreshold = useMemo(() => {
-    if (!lastFetchedCenter || !viewportCenter) return false;
-    return getDistance(lastFetchedCenter, viewportCenter) > 450;
-  }, [lastFetchedCenter, viewportCenter]);
-
-  const showSearchThisArea = isPannedAboveThreshold && !isVenueSelected;
-
   const mapConfig = useMemo(() => getMapLibreConfig(), []);
 
   // Re-register custom category icons whenever style changes (street <-> satellite)
@@ -372,10 +405,15 @@ export const MapView: React.FC<MapViewProps> = ({
     });
   }, [nearbyPOIs, places]);
 
+  // Promoted community places across the entire map
+  const localPromotedPlaces = useMemo(() => {
+    return places.filter((p) => typeof p.latitude === 'number' && typeof p.longitude === 'number');
+  }, [places]);
+
   // Dynamic filter chips derived strictly from all venues in current map area
   const allLoadedVenues = useMemo(() => {
-    return [...places, ...unpromotedNearbyPOIs];
-  }, [places, unpromotedNearbyPOIs]);
+    return [...localPromotedPlaces, ...unpromotedNearbyPOIs];
+  }, [localPromotedPlaces, unpromotedNearbyPOIs]);
 
   // Generate Deterministic Bite Opportunities via Radar Engine
   const radarOpportunities = useMemo(() => {
@@ -392,12 +430,25 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // Derive Today Opportunities (Max 3, deduplicated, truthful)
   const visitedPlaceIds = useMemo(() => {
-    return new Set(
-      (feedBites || [])
-        .filter((b) => b.userId === user?.id && b.isVerified)
-        .map((b) => b.placeId)
-    );
-  }, [feedBites, user?.id]);
+    const visited = new Set<string>();
+    (feedBites || []).forEach((b) => {
+      if (b.isVerified && (b.userId === user?.id || !user?.id || b.userId === 'user_current')) {
+        if (b.placeId) visited.add(b.placeId);
+      }
+    });
+    if ((passport as any)?.districts) {
+      (passport as any).districts.forEach((d: any) => {
+        d.visitedPlaceIds?.forEach((pid: string) => visited.add(pid));
+      });
+    }
+    places.forEach((p) => {
+      if ((p as any).userVisited || (p.verifiedByUserId && p.verifiedByUserId === user?.id)) {
+        visited.add(p.id);
+        if (p.providerPlaceId) visited.add(p.providerPlaceId);
+      }
+    });
+    return visited;
+  }, [feedBites, user?.id, passport, places]);
 
   const todayResult = useMemo(() => {
     return adaptBiteOpportunities(radarOpportunities, {
@@ -470,6 +521,14 @@ export const MapView: React.FC<MapViewProps> = ({
           categories: (poi as any).categories,
         });
         const meta = getCategoryMetadata(canonicalCat);
+        const isVisited =
+          visitedPlaceIds.has(poi.id) ||
+          Boolean(poi.providerId && visitedPlaceIds.has(poi.providerId)) ||
+          Boolean((poi as any).googlePlaceId && visitedPlaceIds.has((poi as any).googlePlaceId));
+
+        const iconName = isVisited
+          ? `icon-${canonicalCat.toLowerCase()}-visited`
+          : `icon-${canonicalCat.toLowerCase()}-unvisited`;
 
         return {
           type: 'Feature',
@@ -484,8 +543,9 @@ export const MapView: React.FC<MapViewProps> = ({
             canonicalCategory: canonicalCat,
             categoryLabel: meta.label,
             categoryShortLabel: meta.shortLabel,
-            iconName: `icon-${canonicalCat.toLowerCase()}`,
-            color: meta.color,
+            iconName,
+            isVisited: isVisited ? 1 : 0,
+            color: isVisited ? '#10B981' : '#78716C',
             address: poi.address,
             district: poi.district,
             city: poi.city || 'Hà Nội',
@@ -495,11 +555,11 @@ export const MapView: React.FC<MapViewProps> = ({
         };
       }),
     };
-  }, [filteredUnpromotedNearbyPOIs]);
+  }, [filteredUnpromotedNearbyPOIs, visitedPlaceIds]);
 
-  // Filter promoted places (Zero network fetch)
+  // Filter promoted places in active area (Zero network fetch)
   const filteredPlaces = useMemo(() => {
-    return places.filter((place) => {
+    return localPromotedPlaces.filter((place) => {
       // 1. Category Filter
       if (activeCategoryFilter !== 'ALL') {
         const cat = normalizeCategory(place);
@@ -511,7 +571,7 @@ export const MapView: React.FC<MapViewProps> = ({
       }
       return true;
     });
-  }, [places, activeCategoryFilter, searchQuery]);
+  }, [localPromotedPlaces, activeCategoryFilter, searchQuery]);
 
   // Filtered radar opportunities for the bottom carousel
   const displayedOpportunities = useMemo(() => {
@@ -545,6 +605,21 @@ export const MapView: React.FC<MapViewProps> = ({
   const formattedDistance =
     activeDistanceM < 1000 ? `${activeDistanceM}m` : `${(activeDistanceM / 1000).toFixed(1)}km`;
 
+  // Nearest available venue across all loaded venues (for smart sparse area fallback)
+  const nearestAvailableVenue = useMemo(() => {
+    if (allLoadedVenues.length === 0) return null;
+    let minD = Infinity;
+    let closest: UnifiedPlace | null = null;
+    for (const v of allLoadedVenues) {
+      const d = getDistance(referenceLocation, { latitude: v.latitude, longitude: v.longitude });
+      if (d < minD) {
+        minD = d;
+        closest = v as any;
+      }
+    }
+    return closest ? { venue: closest, distanceMeters: minD } : null;
+  }, [allLoadedVenues, referenceLocation]);
+
   // Selected background POI distance calculation
   const selectedPOIDistanceM = useMemo(() => {
     if (!selectedBackgroundPOI) return null;
@@ -554,10 +629,10 @@ export const MapView: React.FC<MapViewProps> = ({
     });
   }, [selectedBackgroundPOI, referenceLocation]);
 
-  const handleFlyTo = (lat: number, lng: number) => {
+  const handleFlyTo = (lat: number, lng: number, customZoom = 15.5) => {
     mapRef.current?.flyTo({
       center: [lng, lat],
-      zoom: 15.5,
+      zoom: customZoom,
       duration: 1000,
     });
   };
@@ -608,11 +683,12 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   };
 
-  // MapLibre click handler: intercepts cluster expansions and unclustered background POI taps
+  // MapLibre click handler: intercepts cluster expansions, unclustered POIs, and any vector tile venue tap
   const handleMapClick = useCallback((event: any) => {
     const map = mapRef.current?.getMap();
     if (!map) return;
 
+    // 1. Check custom BiteQuest GeoJSON interactive layers
     const features = map.queryRenderedFeatures(event.point, {
       layers: ['clusters', 'unclustered-category-icon', 'ambient-venue-labels', 'unclustered-far-circle'],
     });
@@ -651,37 +727,91 @@ export const MapView: React.FC<MapViewProps> = ({
       }
     }
 
+    // 2. Spatial search for any vector map tile feature at/near the click point (tolerance 24px)
+    try {
+      const bbox: any = [
+        [event.point.x - 24, event.point.y - 24],
+        [event.point.x + 24, event.point.y + 24],
+      ];
+      const renderedFeatures = map.queryRenderedFeatures(bbox);
+      let clickedVenue: UnifiedPlace | null = null;
+
+      for (const f of renderedFeatures) {
+        if (isFoodOrVenueFeature(f.properties, f.layer?.id)) {
+          const place = convertVectorFeatureToPlace(f, referenceLocation);
+          if (place) {
+            clickedVenue = place;
+            break;
+          }
+        }
+      }
+
+      if (clickedVenue) {
+        addDiscoveredPOIs([clickedVenue]);
+        onSelectPlace(null);
+        setSelectedBackgroundPOI(clickedVenue);
+        handleFlyTo(clickedVenue.latitude, clickedVenue.longitude);
+        return;
+      }
+    } catch (err) {
+      console.warn('[handleMapClick] Vector feature tap error:', err);
+    }
+
     // Tapping empty map dismisses active place & background POI cards
     onSelectPlace(null);
     setSelectedBackgroundPOI(null);
-  }, [nearbyPOIs, onSelectPlace]);
+  }, [nearbyPOIs, referenceLocation, onSelectPlace, addDiscoveredPOIs]);
 
-  // Viewport tracking for "Tìm khu vực này" button
-  const handleMapMoveEnd = useCallback((e: any) => {
-    const center = e.target.getCenter();
-    const newCenter = { latitude: center.lat, longitude: center.lng };
-    setViewportCenter(newCenter);
-    setSearchAreaError(false);
-  }, []);
-
-  const handleSearchThisArea = async () => {
-    if (isLoadingPOIs) return;
-    setSearchAreaError(false);
-    try {
-      const places = await fetchNearbyPOIs(viewportCenter, 2000, {
-        anchor: {
-          latitude: referenceLocation.latitude,
-          longitude: referenceLocation.longitude,
-          isRealUserLocation: hasRealLocation,
-        },
-      });
-      if (!places || !Array.isArray(places)) {
-        setSearchAreaError(true);
-      }
-    } catch {
-      setSearchAreaError(true);
+  // Scan vector map tiles whenever map finishes rendering to promote all OSM POIs across Vietnam
+  const scanMapTiles = useCallback(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const vectorPlaces = scanRenderedMapPlaces(map, referenceLocation);
+    if (vectorPlaces.length > 0) {
+      addDiscoveredPOIs(vectorPlaces);
     }
-  };
+  }, [referenceLocation, addDiscoveredPOIs]);
+
+  // Viewport tracking & smooth silent ambient loading when panning to new areas
+  const handleMapMoveEnd = useCallback(
+    (e: any) => {
+      const center = e.target.getCenter();
+      const newCenter = { latitude: center.lat, longitude: center.lng };
+      setViewportCenter(newCenter);
+      const newRadius = calculateViewportRadius();
+      setViewportRadius(newRadius);
+
+      // Immediately scan visible vector tiles in new viewport
+      scanMapTiles();
+
+      if (moveEndDebounceRef.current) {
+        clearTimeout(moveEndDebounceRef.current);
+      }
+
+      moveEndDebounceRef.current = setTimeout(() => {
+        const dist = lastFetchedCenter ? getDistance(lastFetchedCenter, newCenter) : Infinity;
+        if (dist > 250) {
+          fetchNearbyPOIs(newCenter, newRadius, {
+            anchor: {
+              latitude: referenceLocation.latitude,
+              longitude: referenceLocation.longitude,
+              isRealUserLocation: hasRealLocation,
+            },
+          });
+        }
+      }, 250);
+    },
+    [calculateViewportRadius, lastFetchedCenter, referenceLocation, hasRealLocation, fetchNearbyPOIs, scanMapTiles]
+  );
+
+  // Clean up debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (moveEndDebounceRef.current) {
+        clearTimeout(moveEndDebounceRef.current);
+      }
+    };
+  }, []);
 
   // Re-center button click: pans to user GPS if available, else re-prompts geolocation
   const handleMyLocationClick = () => {
@@ -748,6 +878,7 @@ export const MapView: React.FC<MapViewProps> = ({
           interactiveLayerIds={['clusters', 'unclustered-category-icon', 'ambient-venue-labels', 'unclustered-far-circle']}
           onClick={handleMapClick}
           onMoveEnd={handleMapMoveEnd}
+          onIdle={scanMapTiles}
           onError={(event: any) => {
             const errorObj = event?.error || {};
             const errorMsg =
@@ -825,7 +956,16 @@ export const MapView: React.FC<MapViewProps> = ({
             const isSelected = activePlace?.id === place.id;
             const opp = opportunityMap.get(place.id);
             const isBookmarked = savedPlaceIds.includes(place.id);
-            const isTopOpportunity = radarOpportunities.length > 0 && radarOpportunities[0].placeId === place.id;
+            const isVisited =
+              visitedPlaceIds.has(place.id) ||
+              Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
+              Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
+
+            // Only show authentic review badge if verified bites or actual visits exist
+            const hasCommunityProof =
+              (place.verifiedBiteCount && place.verifiedBiteCount > 0) ||
+              (place.friendsVisited && place.friendsVisited.length > 0) ||
+              Boolean(place.communityVerified);
 
             const isScout = opp?.type === 'SCOUT_WINDOW';
             const isQuest = opp?.type === 'QUEST_MATCH';
@@ -856,11 +996,11 @@ export const MapView: React.FC<MapViewProps> = ({
                   }`}
                   id={`marker-promoted-${place.id}`}
                 >
-                  {/* Subtle Top Opportunity Pill (BiteQuest Promoted Radar Highlight - Max 1) */}
-                  {isTopOpportunity && !isSelected && (
-                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-[#FF6B35] text-white text-[9.5px] font-heading font-semibold shadow-[0_2px_8px_rgba(255,107,53,0.35)] whitespace-nowrap flex items-center gap-1 border border-white/90 animate-fade-in pointer-events-none z-30">
-                      <span className="text-[9px]">✨</span>
-                      <span>Đáng đi</span>
+                  {/* Authentic Community Review Indicator - ONLY shown when real check-ins/reviews exist */}
+                  {hasCommunityProof && !isSelected && (
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-[#10B981] text-white text-[9.5px] font-heading font-semibold shadow-[0_2px_8px_rgba(16,185,129,0.35)] whitespace-nowrap flex items-center gap-1 border border-white/90 animate-fade-in pointer-events-none z-30">
+                      <span className="text-[9px]">⭐</span>
+                      <span>Đã có review</span>
                     </div>
                   )}
 
@@ -872,28 +1012,35 @@ export const MapView: React.FC<MapViewProps> = ({
                     <div className="absolute -inset-2 rounded-full bg-[#FF9F1C]/30 animate-ping pointer-events-none"></div>
                   )}
 
-                  {/* Marker Pin Head */}
+                  {/* Marker Pin Head - Dimmed/Gray for unvisited, Vibrant + Checkmark for visited */}
                   <div
                     className={`relative flex items-center justify-center rounded-full border-2 transition-all shadow-md ${
                       isSelected
-                        ? 'w-10 h-10 bg-[#FF6B35] border-white scale-110 shadow-lg'
-                        : isTopOpportunity
-                        ? 'w-9 h-9 bg-[#FF6B35] border-white ring-2 ring-[#FF6B35]/25 shadow-md'
+                        ? 'w-10 h-10 bg-[#FF6B35] border-white scale-110 shadow-lg text-white'
+                        : isVisited
+                        ? 'w-9 h-9 bg-[#FF6B35] border-white ring-2 ring-[#10B981]/30 shadow-md text-white'
                         : isScout
-                        ? 'w-9 h-9 bg-[#2EC4B6] border-white'
+                        ? 'w-9 h-9 bg-[#2EC4B6] border-white text-white'
                         : isQuest
-                        ? 'w-9 h-9 bg-[#FF9F1C] border-[#2D2926]'
+                        ? 'w-9 h-9 bg-[#FF9F1C] border-[#2D2926] text-[#2D2926]'
                         : isFriendEcho
-                        ? 'w-9 h-9 bg-[#FF6B35] border-white'
-                        : 'w-8 h-8 bg-white border-[#2D2926]/20'
+                        ? 'w-9 h-9 bg-[#FF6B35] border-white text-white'
+                        : 'w-8 h-8 bg-[#78716C] border-[#D6D3D1] text-white/90 shadow-sm opacity-90'
                     }`}
                   >
                     <span className="text-sm">
                       {isScout ? '🥇' : isQuest ? '🗺️' : isFriendEcho ? '👥' : CANONICAL_CATEGORIES[normalizeCategory(place)]?.symbolGlyph || '🍴'}
                     </span>
 
+                    {/* Visited Checkmark Badge */}
+                    {isVisited && (
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#10B981] rounded-full border border-white flex items-center justify-center shadow-xs">
+                        <span className="text-[9px] text-white font-bold">✓</span>
+                      </div>
+                    )}
+
                     {/* Bookmark Indicator Badge */}
-                    {isBookmarked && (
+                    {isBookmarked && !isVisited && (
                       <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#00A7CB] rounded-full border border-white flex items-center justify-center">
                         <span className="text-[8px] text-white">★</span>
                       </div>
@@ -903,7 +1050,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   {/* Bottom Pin Tip */}
                   <div
                     className={`w-0 h-0 mx-auto border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] -mt-0.5 ${
-                      isSelected || isTopOpportunity
+                      isSelected || isVisited
                         ? 'border-t-[#FF6B35]'
                         : isScout
                         ? 'border-t-[#2EC4B6]'
@@ -911,13 +1058,13 @@ export const MapView: React.FC<MapViewProps> = ({
                         ? 'border-t-[#FF9F1C]'
                         : isFriendEcho
                         ? 'border-t-[#FF6B35]'
-                        : 'border-t-white'
+                        : 'border-t-[#78716C]'
                     }`}
                   ></div>
 
                   {/* Hover Tooltip */}
                   <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-[#2D2926]/90 text-white font-heading text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow z-40">
-                    {place.name}
+                    {place.name} {isVisited ? '• Đã check-in ✓' : '• Chưa khám phá (+50 XP)'}
                   </div>
                 </div>
               </Marker>
@@ -926,121 +1073,50 @@ export const MapView: React.FC<MapViewProps> = ({
         </MapGL>
       </div>
 
-      {/* 2. "Tìm khu vực này" Floating Pill Button (Appears when map is panned > 450m) */}
-      {showSearchThisArea && (
-        <div className="absolute top-[116px] md:top-[120px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto transition-all">
-          <button
-            type="button"
-            onClick={handleSearchThisArea}
-            disabled={isLoadingPOIs}
-            className="bg-white/95 hover:bg-white text-[#2D2926] backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.10)] border border-stone-200/90 flex items-center gap-1.5 text-xs font-heading font-medium active:scale-95 transition-all text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B35]"
-            id="btn-search-this-area"
-          >
-            {isLoadingPOIs ? (
-              <>
-                <span className="w-3.5 h-3.5 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin"></span>
-                <span className="text-stone-600">Đang tìm quán...</span>
-              </>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-[15px] text-[#FF6B35]">refresh</span>
-                <span>{searchAreaError ? 'Thử lại tìm khu vực này' : 'Tìm khu vực này'}</span>
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* 3. TOP EXPLORE CONTROLS (V6 EDITORIAL FOOD NAVIGATION) */}
+      {/* TOP EXPLORE CONTROLS (GOOGLE MAPS STYLE SEARCH & FOOD NAVIGATION) */}
       <div className="absolute top-2.5 left-3 right-3 md:left-1/2 md:-translate-x-1/2 md:w-[500px] z-30 pointer-events-auto flex flex-col gap-1.5">
-        {/* Primary Search Bar */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl h-11 px-3.5 flex items-center gap-2.5 shadow-[0_2px_12px_rgba(45,41,38,0.08)] border border-[#2D2926]/8 focus-within:border-[#FF6B35]/50 focus-within:shadow-[0_4px_16px_rgba(255,107,53,0.12)] transition-all">
-          <span className="material-symbols-outlined text-[#2D2926]/45 text-[19px] shrink-0">search</span>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm món, quán hoặc khu vực"
-            className="bg-transparent border-none focus:outline-none w-full text-[13px] font-normal text-[#2D2926] placeholder:text-[#2D2926]/40"
-            id="input-explore-search"
-            aria-label="Tìm món, quán hoặc khu vực"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="w-5 h-5 rounded-full bg-[#2D2926]/8 hover:bg-[#2D2926]/15 flex items-center justify-center text-[10px] text-[#2D2926] transition-colors shrink-0 cursor-pointer"
-              aria-label="Xóa tìm kiếm"
-            >
-              ✕
-            </button>
-          )}
-        </div>
+        {/* Google Maps-Style Interactive Search Bar */}
+        <GoogleMapsSearchBar
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          places={allLoadedVenues}
+          currentLocation={referenceLocation}
+          onSelectVenue={(venue) => {
+            if ('googlePlaceId' in venue || 'isPromoted' in venue) {
+              onSelectPlace(venue as Place);
+              setSelectedBackgroundPOI(null);
+            } else {
+              onSelectPlace(null);
+              setSelectedBackgroundPOI(venue as UnifiedPlace);
+            }
+            handleFlyTo(venue.latitude, venue.longitude, 16.5);
+          }}
+          onSelectLocation={(coords, zoom = 15) => {
+            handleFlyTo(coords.latitude, coords.longitude, zoom);
+            setViewportCenter(coords);
+            fetchNearbyPOIs(coords, 2500, {
+              anchor: {
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                isRealUserLocation: false,
+              },
+              forceRefresh: true,
+            });
+          }}
+          onSelectCategory={(cat) => handleSelectCategoryFilter(cat as ExploreFilterCategory)}
+          onOpenFilter={() => setShowFullFilterSheet(true)}
+          onOpenBiteBot={onOpenBiteBot}
+          isLoading={isLoadingPOIs}
+        />
 
-        {/* Lightweight Food Intent Navigation Bar (Editorial & Mobile-Native) */}
-        <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-[0_2px_10px_rgba(45,41,38,0.06)] border border-[#2D2926]/6 p-1 flex items-center relative">
-          <div
-            className="flex items-center gap-1 overflow-x-auto no-scrollbar scroll-smooth w-full pr-1"
-            role="tablist"
-            aria-label="Bộ lọc ẩm thực nhanh"
-          >
-            {quickFilterChips.map((chip) => {
-              const isSelected = activeCategoryFilter === chip.id;
-              const glyph = chip.metadata?.symbolGlyph || '🍴';
-              const label = chip.metadata?.shortLabel || chip.label;
-
-              return (
-                <button
-                  key={chip.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  onClick={() => handleSelectCategoryFilter(chip.id)}
-                  className={`shrink-0 min-h-[44px] px-3.5 py-2 rounded-xl text-[13px] font-heading flex items-center gap-1.5 transition-all select-none cursor-pointer whitespace-nowrap active:scale-95 focus-visible:ring-2 focus-visible:ring-[#FF6B35] focus-visible:outline-none ${
-                    isSelected
-                      ? 'text-[#EA580C] font-semibold bg-[#FF6B35]/10 relative after:absolute after:bottom-1 after:left-3 after:right-3 after:h-[2px] after:bg-[#FF6B35] after:rounded-full'
-                      : 'text-[#57534E] hover:text-[#1C1917] hover:bg-black/4 font-medium bg-transparent'
-                  }`}
-                  id={`filter-chip-${chip.id.toLowerCase()}`}
-                >
-                  <span className="text-[12px] leading-none shrink-0 opacity-90">{glyph}</span>
-                  <span className="whitespace-nowrap">{label}</span>
-                </button>
-              );
-            })}
-
-            {/* Subtle Divider */}
-            <div className="w-[1px] h-5 bg-[#2D2926]/10 shrink-0 mx-0.5" />
-
-            {/* Full Category Filter Modal Trigger */}
-            <button
-              type="button"
-              onClick={() => setShowFullFilterSheet(true)}
-              className={`shrink-0 min-h-[44px] px-3 py-2 rounded-xl text-[12.5px] font-heading font-medium flex items-center gap-1.5 transition-all select-none cursor-pointer whitespace-nowrap active:scale-95 focus-visible:ring-2 focus-visible:ring-[#FF6B35] focus-visible:outline-none ${
-                activeCategoryFilter !== 'ALL' &&
-                !quickFilterChips.some((c) => c.id === activeCategoryFilter)
-                  ? 'text-[#EA580C] font-semibold bg-[#FF6B35]/10'
-                  : 'text-[#57534E] hover:text-[#1C1917] hover:bg-black/4 bg-transparent'
-              }`}
-              id="btn-open-full-filter"
-              aria-label="Xem tất cả bộ lọc danh mục ẩm thực"
-            >
-              <span className="material-symbols-outlined text-[16px] text-[#FF6B35]">tune</span>
-              <span>Bộ lọc</span>
-              {activeCategoryFilter !== 'ALL' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35] shrink-0" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* 10km Discovery Boundary Warning (Only when beyond boundary) */}
-        {isBeyondBoundary && (
-          <div className="bg-amber-600/95 text-white backdrop-blur-md px-3 py-1 rounded-full text-[11px] font-heading font-semibold flex items-center justify-center gap-1.5 shadow-sm animate-fade-in text-center">
-            <span>⚠️</span>
-            <span>Đã đạt giới hạn 10km từ vị trí thực tế của bạn</span>
-          </div>
-        )}
+        {/* Interactive Food Intent Category Navigation Bar with Drag-to-Scroll & Pinned Filter Button */}
+        <CategoryFilterBar
+          chips={quickFilterChips}
+          activeFilter={activeCategoryFilter}
+          onSelectFilter={handleSelectCategoryFilter}
+          onOpenFullFilter={() => setShowFullFilterSheet(true)}
+          totalVenuesCount={allLoadedVenues.length}
+        />
       </div>
 
       {/* 4. Empty Search/Filter State Banner */}
@@ -1077,6 +1153,63 @@ export const MapView: React.FC<MapViewProps> = ({
           </button>
         </div>
       )}
+
+      {/* 4A. Pioneer Explorer Pill for Sparse / New Outer Areas (Compact, Non-intrusive & Dismissable) */}
+      {totalVisibleVenues === 0 &&
+        !isFilterActive &&
+        !isVenueSelected &&
+        !isPioneerBannerDismissed &&
+        !isLoadingPOIs && (
+          <div
+            className="absolute bottom-24 md:bottom-22 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-full shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-stone-200/90 flex items-center gap-2 max-w-[92vw] sm:max-w-md animate-fade-in"
+            id="pioneer-area-state-banner"
+            role="status"
+          >
+            <span className="text-sm shrink-0">🧭</span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-xs font-heading font-semibold text-[#2D2926] truncate">
+                {nearestAvailableVenue
+                  ? `Quán gần nhất: ${nearestAvailableVenue.venue.name} (${(nearestAvailableVenue.distanceMeters / 1000).toFixed(1)}km)`
+                  : 'Khu vực này chưa có quán check-in'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+              {nearestAvailableVenue && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleFlyTo(nearestAvailableVenue.venue.latitude, nearestAvailableVenue.venue.longitude, 16);
+                  }}
+                  className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-[#2D2926] text-[11px] font-heading font-medium rounded-full active:scale-95 transition-all cursor-pointer"
+                  title="Bay đến quán gần nhất"
+                >
+                  Xem quán
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onNavigateToCamera(null, { mode: 'scout', title: 'Khai phá quán mới' })}
+                className="px-2.5 py-1 bg-[#FF6B35] hover:bg-[#E85D2A] text-white text-[11px] font-heading font-bold rounded-full shadow-2xs active:scale-95 transition-all cursor-pointer flex items-center gap-1"
+                id="btn-add-pioneer-spot"
+              >
+                <span>+50 XP</span>
+                <span className="hidden xs:inline">Thêm quán</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPioneerBannerDismissed(true)}
+                className="w-5 h-5 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400 hover:text-stone-700 text-xs transition-colors cursor-pointer ml-0.5"
+                title="Đóng thông báo"
+                aria-label="Đóng thông báo"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
       {/* 4B. Full Filter Bottom Sheet / Modal */}
       {showFullFilterSheet && (
@@ -1304,20 +1437,36 @@ export const MapView: React.FC<MapViewProps> = ({
         </button>
       </div>
 
-      {/* 6a. Discovery Peek Sheet (First-Open Today Hook on Explore) */}
+      {/* 6a. Discovery Peek Sheet (Compact Today Corner Widget on Explore) */}
       {!activePlace && !selectedBackgroundPOI && !isRadarOpen && (
-        <div className="absolute bottom-22 left-0 right-0 z-30 pointer-events-none">
-          <DiscoveryPeekSheet
-            todayOpportunities={todayOpportunities}
-            totalVenuesCount={allLoadedVenues.length}
-            isRealUserLocation={referenceLocation.isRealUserLocation}
-            isLoading={isLoadingPOIs}
-            onSelectVenue={handleSelectVenueFromPeek}
-          />
+        <DiscoveryPeekSheet
+          todayOpportunities={todayOpportunities}
+          totalVenuesCount={allLoadedVenues.length}
+          isRealUserLocation={referenceLocation.isRealUserLocation}
+          isLoading={isLoadingPOIs}
+          onSelectVenue={handleSelectVenueFromPeek}
+        />
+      )}
+
+      {/* 6b. BiteBot AI Assistant Floating Action Trigger on Explore (Positioned comfortably above bottom card) */}
+      {!activePlace && !selectedBackgroundPOI && !isRadarOpen && onOpenBiteBot && (
+        <div className="absolute bottom-34 right-3 z-20 pointer-events-auto">
+          <button
+            type="button"
+            onClick={onOpenBiteBot}
+            className="group bg-[#2D2926]/90 hover:bg-[#1E1B19] active:scale-95 text-white backdrop-blur-md px-3 py-2 rounded-full shadow-[0_4px_16px_rgba(45,41,38,0.20)] border border-white/15 flex items-center gap-1.5 transition-all cursor-pointer hover:shadow-lg"
+            id="btn-map-bitebot-fab"
+            title="Hỏi Trợ lý Ẩm thực BiteBot AI"
+          >
+            <span className="text-xs animate-pulse">✨</span>
+            <span className="font-heading text-[11px] font-bold tracking-tight text-white hidden xs:inline">
+              BiteBot AI
+            </span>
+          </button>
         </div>
       )}
 
-      {/* 6b. Bottom Opportunity Carousel (Rendered when Radar destination/tab is active) */}
+      {/* 6c. Bottom Opportunity Carousel (Rendered when Radar destination/tab is active) */}
       {!activePlace && !selectedBackgroundPOI && isRadarOpen && displayedOpportunities.length > 0 && (
         <div className="absolute bottom-22 left-0 right-0 z-30 pointer-events-none">
           <OpportunityCarousel
@@ -1334,6 +1483,9 @@ export const MapView: React.FC<MapViewProps> = ({
       {selectedBackgroundPOI && !activePlace && (() => {
         const canonicalCat = normalizeCategory(selectedBackgroundPOI);
         const catMeta = getCategoryMetadata(canonicalCat);
+        const isVisited =
+          visitedPlaceIds.has(selectedBackgroundPOI.id) ||
+          Boolean(selectedBackgroundPOI.providerId && visitedPlaceIds.has(selectedBackgroundPOI.providerId));
         const verifiedCount = (selectedBackgroundPOI as any).verifiedBiteCount || 0;
 
         return (
@@ -1358,14 +1510,19 @@ export const MapView: React.FC<MapViewProps> = ({
                       <span>{catMeta.label}</span>
                     </span>
 
-                    {verifiedCount > 0 ? (
+                    {isVisited ? (
+                      <span className="bg-[#D1FAE5] text-[#065F46] border border-[#10B981] font-heading text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span>✅</span>
+                        <span>Đã ghé thăm</span>
+                      </span>
+                    ) : verifiedCount > 0 ? (
                       <span className="bg-[#D1FAE5] text-[#065F46] border border-[#10B981] font-heading text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                         <span>🛡️</span>
                         <span>{verifiedCount} lượt Bite xác minh</span>
                       </span>
                     ) : (
                       <span className="bg-[#F4F4F5] text-[#71717A] border border-[#E4E4E7] font-heading text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <span>Chưa có lượt Bite</span>
+                        <span>🔍 Chưa khám phá (+50 XP)</span>
                       </span>
                     )}
                   </div>
@@ -1399,7 +1556,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   </span>
                 </div>
                 <span className="text-[11px] text-[#594139]/80 font-medium">
-                  Dữ liệu bản đồ Geoapify / OpenStreetMap
+                  {isVisited ? 'Đã lưu trong lịch sử Bite' : 'Mở khóa quán này bằng cách Check-in'}
                 </span>
               </div>
 
@@ -1430,15 +1587,25 @@ export const MapView: React.FC<MapViewProps> = ({
                   id="btn-poi-capture-bite"
                 >
                   <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-                  <span>Chụp Bite tại đây 📸</span>
+                  <span>{isVisited ? 'Chụp thêm Bite 📸' : 'Chụp Bite check-in (+50 XP) 📸'}</span>
                 </button>
 
                 <button
                   onClick={() => {
-                    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      selectedBackgroundPOI.name + ' ' + selectedBackgroundPOI.address
-                    )}`;
-                    window.open(googleMapsUrl, '_blank');
+                    const googlePlaceId =
+                      (selectedBackgroundPOI as any).googlePlaceId ||
+                      (selectedBackgroundPOI.providerId?.startsWith('ChIJ')
+                        ? selectedBackgroundPOI.providerId
+                        : undefined);
+
+                    const googleMapsUrl = buildGoogleMapsDirectionsUrl({
+                      name: selectedBackgroundPOI.name,
+                      address: selectedBackgroundPOI.address,
+                      latitude: selectedBackgroundPOI.latitude,
+                      longitude: selectedBackgroundPOI.longitude,
+                      googlePlaceId,
+                    });
+                    window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
                   }}
                   className="px-4 bg-white border border-[#2D2926]/10 hover:bg-[#F4F4F0] text-[#2D2926] h-11 rounded-full font-heading text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer"
                   title="Chỉ đường"
@@ -1454,232 +1621,248 @@ export const MapView: React.FC<MapViewProps> = ({
       })()}
 
       {/* 8. PROMOTED BITEQUEST PLACE CARD V2 (When a BiteQuest place is selected) */}
-      {activePlace && (
-        <div
-          className="absolute bottom-22 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-[420px] z-40 transition-all duration-300 transform translate-y-0 pointer-events-auto"
-          id="active-restaurant-card-v2"
-        >
-          <div className="bg-[#FDFCF8] rounded-3xl shadow-[0_-6px_30px_rgba(45,41,38,0.16)] border border-[#2D2926]/10 overflow-hidden flex flex-col">
-            {/* Card Header Image */}
-            <div className="h-32 w-full relative">
-              <img
-                src={activePlace.imageUrl}
-                alt={activePlace.name}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+      {activePlace && (() => {
+        const isPlaceVisited =
+          visitedPlaceIds.has(activePlace.id) ||
+          Boolean(activePlace.providerPlaceId && visitedPlaceIds.has(activePlace.providerPlaceId));
 
-              {/* Close button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectPlace(null);
-                }}
-                className="absolute top-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all cursor-pointer z-20 active:scale-90"
-                title="Đóng để xem lại danh sách"
-                id="btn-close-place-card"
-              >
-                <span className="material-symbols-outlined text-[18px]">close</span>
-              </button>
+        const hasRealCommunityProof =
+          (activePlace.verifiedBiteCount && activePlace.verifiedBiteCount > 0) ||
+          (activePlace.friendsVisited && activePlace.friendsVisited.length > 0) ||
+          Boolean(activePlace.communityVerified);
 
-              {/* Bookmark Save button */}
-              <button
-                onClick={() => onSavePlaceToggle(activePlace.id)}
-                className={`absolute top-3 right-13 w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-transform active:scale-90 ${
-                  isSaved ? 'bg-[#00A7CB] text-white' : 'bg-white/90 text-[#2D2926]'
-                }`}
-                title="Lưu quán"
-              >
-                <span className="material-symbols-outlined text-[18px] fill">bookmark</span>
-              </button>
+        return (
+          <div
+            className="absolute bottom-22 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-[420px] z-40 transition-all duration-300 transform translate-y-0 pointer-events-auto"
+            id="active-restaurant-card-v2"
+          >
+            <div className="bg-[#FDFCF8] rounded-3xl shadow-[0_-6px_30px_rgba(45,41,38,0.16)] border border-[#2D2926]/10 overflow-hidden flex flex-col">
+              {/* Card Header Image */}
+              <div className="h-32 w-full relative">
+                <img
+                  src={activePlace.imageUrl}
+                  alt={activePlace.name}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
 
-              {/* Opportunity Type Pill on Image */}
-              <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
-                {activeOpportunity?.type === 'SCOUT_WINDOW' && (
-                  <span className="bg-[#2EC4B6] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                    <span>🥇 First Verifier</span>
-                  </span>
-                )}
-
-                {activeOpportunity?.type === 'QUEST_MATCH' && (
-                  <span className="bg-[#FF9F1C] text-[#2D2926] font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                    <span>🗺️ Khớp Hành trình</span>
-                  </span>
-                )}
-
-                {activeOpportunity?.type === 'STARTER_QUEST' && (
-                  <span className="bg-[#2EC4B6] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                    <span>🌱 Starter Bite</span>
-                  </span>
-                )}
-
-                {activeOpportunity?.type === 'FRESH_VERIFIED' && (
-                  <span className="bg-[#2EC4B6] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                    <span>✨ Vừa xác minh</span>
-                  </span>
-                )}
-
-                {activeOpportunity?.type === 'NEW_TO_YOU' && (
-                  <span className="bg-[#FF6B35] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                    <span>👀 Mới với bạn</span>
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Card Body */}
-            <div className="p-4 flex flex-col gap-3">
-              {/* Title & Basic Meta */}
-              <div>
-                <div className="flex justify-between items-start mb-0.5">
-                  <h2 className="font-heading text-lg font-bold text-[#2D2926]">
-                    {activePlace.name}
-                  </h2>
-                  <div className="flex items-center gap-1 bg-[#F4F4F0] px-2 py-0.5 rounded-md">
-                    <span className="material-symbols-outlined text-[#FF6B35] text-[15px] fill">
-                      star
-                    </span>
-                    <span className="font-heading text-xs font-bold text-[#2D2926]">
-                      {activePlace.rating}
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-[#594139] flex items-center gap-1.5 font-medium">
-                  <span>{activePlace.categoryLabel || activePlace.district}</span>
-                  <span className="w-1 h-1 bg-[#8D7168]/40 rounded-full"></span>
-                  <span>{activePlace.priceBand || '35k–55k'}</span>
-                  <span className="w-1 h-1 bg-[#8D7168]/40 rounded-full"></span>
-                  <span className="text-[#006A62] font-semibold">
-                    {activePlace.isOpen ? 'Đang mở cửa' : 'Đóng cửa'}
-                  </span>
-                </p>
-              </div>
-
-              {/* "WHY THIS PIN?" / REASONS TO GO NOW */}
-              <div className="bg-[#FAF9F5] rounded-2xl p-3 border border-[#2D2926]/8 flex flex-col gap-2">
-                <div className="text-[10px] font-heading uppercase tracking-wider font-extrabold text-[#594139]/70 flex items-center gap-1">
-                  <span>💡 Lý do nên đi lúc này:</span>
-                </div>
-
-                {/* Render Deterministic Reasons */}
-                {activeOpportunity?.reasons && activeOpportunity.reasons.length > 0 ? (
-                  activeOpportunity.reasons.map((reason, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-2 bg-white p-2 rounded-xl border border-[#2D2926]/5 shadow-xs"
-                    >
-                      <span className="text-base shrink-0">{reason.icon}</span>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-[#2D2926]">{reason.text}</span>
-                        {reason.highlight && (
-                          <span className="text-[11px] font-semibold text-[#FF6B35]">
-                            {reason.highlight}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-xs text-[#2D2926] flex items-center gap-1.5">
-                    <span>✨</span>
-                    <span>Địa điểm được cộng đồng ẩm thực đánh giá cao tại {activePlace.district}</span>
-                  </div>
-                )}
-
-                {/* Friend Echo Bite Chain Details */}
-                {activeOpportunity?.type === 'FRIEND_ECHO' && activeOpportunity.friendActivity && (
-                  <div className="pt-1 text-[11px] text-[#594139] border-t border-[#2D2926]/5 flex items-center justify-between">
-                    <span className="flex items-center gap-1">
-                      <span className="font-bold text-[#2D2926]">🔗 Bite Chain:</span> {activeOpportunity.friendActivity.chainCount || 3} người đã đi theo dấu Bite này
-                    </span>
-                  </div>
-                )}
-
-                {/* Scout Window Details */}
-                {activeOpportunity?.type === 'SCOUT_WINDOW' && (
-                  <div className="pt-1 text-[11px] text-[#006A62] border-t border-[#2D2926]/5 flex items-center justify-between font-medium">
-                    <span>Người phát hiện: {activeOpportunity.scoutData?.discoveredBy}</span>
-                    <span className="font-bold">0 người xác minh</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Distance & Address Info */}
-              <div className="flex items-center justify-between text-xs text-[#594139] bg-white p-2.5 rounded-xl border border-[#2D2926]/5">
-                <div className="flex items-center gap-1.5 font-heading font-bold text-[#2D2926]">
-                  <span className="material-symbols-outlined text-[#FF6B35] text-[18px]">near_me</span>
-                  <span>{formattedDistance}</span>
-                </div>
-                <span className="text-[11px] truncate max-w-[200px] text-[#594139]">
-                  {activePlace.address}
-                </span>
-              </div>
-
-              {/* Dynamic Action Buttons */}
-              <div className="flex gap-2">
+                {/* Close button */}
                 <button
-                  onClick={() => {
-                    if (activeOpportunity) {
-                      handleOpportunityAction(activeOpportunity);
-                    } else {
-                      onNavigateToCamera(activePlace);
-                    }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectPlace(null);
                   }}
-                  className={`flex-1 h-11 rounded-full font-heading text-xs font-bold shadow-md flex items-center justify-center gap-1.5 active:scale-95 transition-all text-white cursor-pointer ${
-                    activeOpportunity?.type === 'SCOUT_WINDOW'
-                      ? 'bg-[#2EC4B6] hover:bg-[#2EC4B6]/90 shadow-[#2EC4B6]/30'
-                      : activeOpportunity?.type === 'QUEST_MATCH'
-                      ? 'bg-[#FF9F1C] hover:bg-[#FF9F1C]/90 shadow-[#FF9F1C]/30 text-[#2D2926]'
-                      : activeOpportunity?.type === 'STARTER_QUEST'
-                      ? 'bg-[#FF6B35] hover:bg-[#FF6B35]/90 shadow-[#FF6B35]/30'
-                      : 'bg-[#FF6B35] hover:bg-[#FF6B35]/90 shadow-[#FF6B35]/30'
+                  className="absolute top-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all cursor-pointer z-20 active:scale-90"
+                  title="Đóng để xem lại danh sách"
+                  id="btn-close-place-card"
+                >
+                  <span className="material-symbols-outlined text-[18px]">close</span>
+                </button>
+
+                {/* Bookmark Save button */}
+                <button
+                  onClick={() => onSavePlaceToggle(activePlace.id)}
+                  className={`absolute top-3 right-13 w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-transform active:scale-90 ${
+                    isSaved ? 'bg-[#00A7CB] text-white' : 'bg-white/90 text-[#2D2926]'
                   }`}
-                  id="btn-smart-cta"
+                  title="Lưu quán"
                 >
-                  {activeOpportunity?.type === 'SCOUT_WINDOW' ? (
-                    <>
-                      <span className="material-symbols-outlined text-[18px]">verified</span>
-                      <span>Đi xác minh →</span>
-                    </>
-                  ) : activeOpportunity?.type === 'QUEST_MATCH' ? (
-                    <>
-                      <span className="material-symbols-outlined text-[18px]">flag</span>
-                      <span>Mở khóa thử thách →</span>
-                    </>
-                  ) : activeOpportunity?.type === 'STARTER_QUEST' ? (
-                    <>
-                      <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-                      <span>Bắt đầu Bite ngay 📸</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-                      <span>Chụp Bite ngay 📸</span>
-                    </>
-                  )}
+                  <span className="material-symbols-outlined text-[18px] fill">bookmark</span>
                 </button>
 
-                {/* External Directions */}
-                <button
-                  onClick={() => {
-                    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      activePlace.name + ' ' + activePlace.address
-                    )}`;
-                    window.open(googleMapsUrl, '_blank');
-                  }}
-                  className="px-4 bg-white border border-[#2D2926]/10 hover:bg-[#F4F4F0] text-[#2D2926] h-11 rounded-full font-heading text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer"
-                  title="Chỉ đường"
-                  id="btn-directions"
-                >
-                  <span className="material-symbols-outlined text-[18px] text-[#FF6B35]">directions</span>
-                  <span>Chỉ đường</span>
-                </button>
+                {/* Opportunity Type / Visited Pill on Image */}
+                <div className="absolute bottom-3 left-3 flex items-center gap-1.5 flex-wrap">
+                  {isPlaceVisited ? (
+                    <span className="bg-[#10B981] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
+                      <span>✓ Đã chinh phục</span>
+                    </span>
+                  ) : (
+                    <span className="bg-black/60 backdrop-blur-md text-white font-heading text-xs font-semibold px-2.5 py-0.5 rounded-full border border-white/20 flex items-center gap-1">
+                      <span>🔍 Chưa khám phá (+50 XP)</span>
+                    </span>
+                  )}
+
+                  {activeOpportunity?.type === 'SCOUT_WINDOW' && !isPlaceVisited && (
+                    <span className="bg-[#2EC4B6] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
+                      <span>🥇 First Verifier</span>
+                    </span>
+                  )}
+
+                  {activeOpportunity?.type === 'QUEST_MATCH' && !isPlaceVisited && (
+                    <span className="bg-[#FF9F1C] text-[#2D2926] font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
+                      <span>🗺️ Khớp Hành trình</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Card Body */}
+              <div className="p-4 flex flex-col gap-3">
+                {/* Title & Basic Meta */}
+                <div>
+                  <div className="flex justify-between items-start mb-0.5">
+                    <h2 className="font-heading text-lg font-bold text-[#2D2926]">
+                      {activePlace.name}
+                    </h2>
+                    {hasRealCommunityProof ? (
+                      <div className="flex items-center gap-1 bg-[#F4F4F0] px-2 py-0.5 rounded-md" title="Đánh giá từ cộng đồng thực tế">
+                        <span className="material-symbols-outlined text-[#FF6B35] text-[15px] fill">
+                          star
+                        </span>
+                        <span className="font-heading text-xs font-bold text-[#2D2926]">
+                          {activePlace.rating || '4.5'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 bg-[#F4F4F0] px-2 py-0.5 rounded-md text-[11px] font-heading font-medium text-stone-500">
+                        <span>Chưa có review</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-[#594139] flex items-center gap-1.5 font-medium">
+                    <span>{activePlace.categoryLabel || activePlace.district}</span>
+                    <span className="w-1 h-1 bg-[#8D7168]/40 rounded-full"></span>
+                    <span>{activePlace.priceBand || '35k–55k'}</span>
+                    <span className="w-1 h-1 bg-[#8D7168]/40 rounded-full"></span>
+                    <span className="text-[#006A62] font-semibold">
+                      {activePlace.isOpen ? 'Đang mở cửa' : 'Đóng cửa'}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Visited Status / Objective Highlight */}
+                {isPlaceVisited ? (
+                  <div className="bg-[#ECFDF5] border border-[#10B981]/30 rounded-2xl p-2.5 flex items-center gap-2 text-xs font-heading text-[#065F46] font-bold">
+                    <span className="text-base">🎉</span>
+                    <span>Bạn đã check-in quán này & hoàn thành thử thách!</span>
+                  </div>
+                ) : (
+                  <div className="bg-[#FAF9F5] rounded-2xl p-3 border border-[#2D2926]/8 flex flex-col gap-2">
+                    <div className="text-[10px] font-heading uppercase tracking-wider font-extrabold text-[#594139]/70 flex items-center gap-1">
+                      <span>💡 Điểm nổi bật:</span>
+                    </div>
+
+                    {/* Render Deterministic Reasons */}
+                    {activeOpportunity?.reasons && activeOpportunity.reasons.length > 0 ? (
+                      activeOpportunity.reasons.map((reason, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-2 bg-white p-2 rounded-xl border border-[#2D2926]/5 shadow-xs"
+                        >
+                          <span className="text-base shrink-0">{reason.icon}</span>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-[#2D2926]">{reason.text}</span>
+                            {reason.highlight && (
+                              <span className="text-[11px] font-semibold text-[#FF6B35]">
+                                {reason.highlight}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-[#2D2926] flex items-center gap-1.5">
+                        <span>📍</span>
+                        <span>Địa điểm ẩm thực tại {activePlace.district} • Chờ bạn khám phá</span>
+                      </div>
+                    )}
+
+                    {/* Friend Echo Details if any */}
+                    {activeOpportunity?.type === 'FRIEND_ECHO' && activeOpportunity.friendActivity && (
+                      <div className="pt-1 text-[11px] text-[#594139] border-t border-[#2D2926]/5 flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <span className="font-bold text-[#2D2926]">🔗 Dấu chân bạn bè:</span> {activeOpportunity.friendActivity.chainCount || 1} bạn bè đã ghé đây
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Distance & Address Info */}
+                <div className="flex items-center justify-between text-xs text-[#594139] bg-white p-2.5 rounded-xl border border-[#2D2926]/5">
+                  <div className="flex items-center gap-1.5 font-heading font-bold text-[#2D2926]">
+                    <span className="material-symbols-outlined text-[#FF6B35] text-[18px]">near_me</span>
+                    <span>{formattedDistance}</span>
+                  </div>
+                  <span className="text-[11px] truncate max-w-[200px] text-[#594139]">
+                    {activePlace.address}
+                  </span>
+                </div>
+
+                {/* Dynamic Action Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (activeOpportunity) {
+                        handleOpportunityAction(activeOpportunity);
+                      } else {
+                        onNavigateToCamera(activePlace);
+                      }
+                    }}
+                    className={`flex-1 h-11 rounded-full font-heading text-xs font-bold shadow-md flex items-center justify-center gap-1.5 active:scale-95 transition-all text-white cursor-pointer ${
+                      activeOpportunity?.type === 'SCOUT_WINDOW'
+                        ? 'bg-[#2EC4B6] hover:bg-[#2EC4B6]/90 shadow-[#2EC4B6]/30'
+                        : activeOpportunity?.type === 'QUEST_MATCH'
+                        ? 'bg-[#FF9F1C] hover:bg-[#FF9F1C]/90 shadow-[#FF9F1C]/30 text-[#2D2926]'
+                        : 'bg-[#FF6B35] hover:bg-[#FF6B35]/90 shadow-[#FF6B35]/30'
+                    }`}
+                    id="btn-smart-cta"
+                  >
+                    {isPlaceVisited ? (
+                      <>
+                        <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+                        <span>Chụp thêm Bite 📸</span>
+                      </>
+                    ) : activeOpportunity?.type === 'SCOUT_WINDOW' ? (
+                      <>
+                        <span className="material-symbols-outlined text-[18px]">verified</span>
+                        <span>Đi xác minh →</span>
+                      </>
+                    ) : activeOpportunity?.type === 'QUEST_MATCH' ? (
+                      <>
+                        <span className="material-symbols-outlined text-[18px]">flag</span>
+                        <span>Mở khóa thử thách →</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+                        <span>Chụp Bite check-in (+50 XP) 📸</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* External Directions */}
+                  <button
+                    onClick={() => {
+                      const googlePlaceId =
+                        activePlace.googlePlaceId ||
+                        (activePlace.providerPlaceId?.startsWith('ChIJ')
+                          ? activePlace.providerPlaceId
+                          : undefined);
+
+                      const googleMapsUrl = buildGoogleMapsDirectionsUrl({
+                        name: activePlace.name,
+                        address: activePlace.address,
+                        latitude: activePlace.latitude,
+                        longitude: activePlace.longitude,
+                        googlePlaceId,
+                      });
+                      window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
+                    }}
+                    className="px-4 bg-white border border-[#2D2926]/10 hover:bg-[#F4F4F0] text-[#2D2926] h-11 rounded-full font-heading text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer"
+                    title="Chỉ đường"
+                    id="btn-directions"
+                  >
+                    <span className="material-symbols-outlined text-[18px] text-[#FF6B35]">directions</span>
+                    <span>Chỉ đường</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 9. MapLibre OpenFreeMap & OpenStreetMap Proper Attribution */}
       <div

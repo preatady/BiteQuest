@@ -558,9 +558,8 @@ export function computeQuickFilterChips(
     metadata: ALL_CATEGORY_META,
   };
 
-  // Build concise quick list following canonical food intent order (top 5 primary food desires)
+  // Build quick list following canonical food intent order for all available categories
   const quickList: DynamicFilterChip[] = [];
-  const maxPrimaryQuickIntents = 5;
 
   for (const cat of PREFERRED_QUICK_CATEGORY_PRIORITY) {
     if (counts[cat] > 0) {
@@ -570,13 +569,10 @@ export function computeQuickFilterChips(
         count: counts[cat],
         metadata: CANONICAL_CATEGORIES[cat],
       });
-      if (quickList.length >= maxPrimaryQuickIntents) {
-        break;
-      }
     }
   }
 
-  // If the active filter is set to a non-ALL category that is not in the top 5, surface it so its active state is visible
+  // If the active filter is set to a non-ALL category that is not in the list, surface it so its active state is visible
   if (activeFilter !== 'ALL' && !quickList.some((c) => c.id === activeFilter)) {
     const cat = activeFilter as CanonicalCategory;
     if (CANONICAL_CATEGORIES[cat]) {

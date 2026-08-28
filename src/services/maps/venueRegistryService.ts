@@ -12,9 +12,9 @@ import { PlaceProvider, UnifiedPlace } from './types';
 import { GeoapifyPlaceProvider } from './geoapify/geoapifyPlaces';
 import { Place, BiteCheckin } from '../../types';
 import { INITIAL_PLACES } from '../../data/seedData';
+import { classifyVenue, CANONICAL_CATEGORIES } from './categoryNormalizer';
 
 // Constants
-export const MAX_DISCOVERY_RADIUS_METERS = 10000; // 10km exploration boundary
 export const REGISTRY_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours TTL for venue sync
 export const SPATIAL_GRID_SIZE_DEG = 0.01; // ~1.1km grid cell step
 export const DEDUP_DISTANCE_METERS = 25; // 25m spatial proximity threshold for name-matched dedup
@@ -45,6 +45,74 @@ export class VenueRegistryService {
   constructor(primaryProvider?: PlaceProvider, firestoreDb?: FirestoreDbLike | null) {
     if (primaryProvider) this.primaryProvider = primaryProvider;
     if (firestoreDb) this.firestoreDb = firestoreDb;
+
+    // Pre-hydrate all authentic curated places into memory spatial index
+    for (const p of INITIAL_PLACES) {
+      this.registerPlace(p);
+    }
+  }
+
+  /**
+   * Registers any place (curated directory place or community spot) as a canonical venue.
+   */
+  public registerPlace(place: Place): CanonicalVenue {
+    const now = new Date().toISOString();
+    const isComm = Boolean(place.isCommunitySpot);
+    const canonicalId = isComm ? `vn_comm_${place.id}` : `vn_dir_${place.id}`;
+    const normName = this.normalizeName(place.name);
+    const gridCell = this.getGridCellKey(place.latitude, place.longitude);
+
+    const sourceRef: VenueSourceRef = {
+      provider: isComm ? 'bitequest_community' : 'bitequest_curated',
+      providerPlaceId: place.id,
+      firstSeenAt: place.createdAt || now,
+      lastSeenAt: now,
+    };
+
+    const existing = this.memoryVenues.get(canonicalId);
+    if (existing) {
+      existing.name = place.name;
+      existing.normalizedName = normName;
+      existing.latitude = place.latitude;
+      existing.longitude = place.longitude;
+      existing.address = place.address || existing.address;
+      existing.district = place.district || existing.district;
+      existing.category = place.category;
+      existing.categoryLabel = place.categoryLabel || existing.categoryLabel;
+      existing.communityStatus = place.communityStatus || existing.communityStatus;
+      existing.communityVerified = place.communityVerified || existing.communityVerified;
+      existing.updatedAt = now;
+      this.indexVenueInMemory(existing);
+      return existing;
+    }
+
+    const venue: CanonicalVenue = {
+      canonicalVenueId: canonicalId,
+      name: place.name,
+      normalizedName: normName,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      gridCell,
+      address: place.address || 'Hà Nội',
+      district: place.district || 'Cầu Giấy',
+      city: (place as any).city || 'Hà Nội',
+      category: place.category || 'street_food',
+      categoryLabel: place.categoryLabel || 'Quán ẩm thực',
+      sourceRefs: [sourceRef],
+      primarySource: isComm ? 'bitequest_community' : 'bitequest_curated',
+      isCommunitySpot: isComm,
+      communityStatus: place.communityStatus || (isComm ? 'pending' : undefined),
+      communityVerified: place.communityVerified || false,
+      firstDiscovererId: place.firstDiscovererId,
+      firstDiscovererName: place.firstDiscovererName,
+      verifiedBiteCount: 0,
+      createdAt: (place as any).createdAt || now,
+      updatedAt: now,
+      lastSyncedAt: now,
+    };
+
+    this.indexVenueInMemory(venue);
+    return venue;
   }
 
   private getEffectivePrimaryProvider(): PlaceProvider | null {
@@ -53,11 +121,8 @@ export class VenueRegistryService {
       (typeof process !== 'undefined'
         ? process.env?.GEOAPIFY_SERVER_KEY || process.env?.GEOAPIFY_API_KEY || process.env?.VITE_GEOAPIFY_API_KEY
         : '') || '';
-    if (geoapifyKey) {
-      this.primaryProvider = new GeoapifyPlaceProvider(geoapifyKey);
-      return this.primaryProvider;
-    }
-    return null;
+    this.primaryProvider = new GeoapifyPlaceProvider(geoapifyKey);
+    return this.primaryProvider;
   }
 
   setPrimaryProvider(provider: PlaceProvider) {
@@ -435,6 +500,13 @@ export class VenueRegistryService {
     );
 
     const primaryRef = venue.sourceRefs[0];
+    const classification = classifyVenue({
+      name: venue.name,
+      category: venue.category,
+      categoryLabel: venue.categoryLabel,
+      categories: venue.categories,
+    });
+    const catMeta = CANONICAL_CATEGORIES[classification.category] || CANONICAL_CATEGORIES.RESTAURANT;
 
     return {
       id: venue.canonicalVenueId,
@@ -443,8 +515,8 @@ export class VenueRegistryService {
       provider: venue.primarySource,
       source: venue.primarySource,
       name: venue.name,
-      category: venue.category,
-      categoryLabel: venue.categoryLabel || 'Quán ẩm thực',
+      category: classification.category,
+      categoryLabel: catMeta.label,
       address: venue.address || '',
       district: venue.district || 'Cầu Giấy',
       city: venue.city || 'Hà Nội',
@@ -483,35 +555,11 @@ export class VenueRegistryService {
       isRealUserLocation: false,
     };
 
-    // 1. Enforce 10km Discovery Boundary
+    // Compute distance to reference anchor for telemetry
     const distanceToAnchor = getDistance(
       { latitude: effectiveAnchor.latitude, longitude: effectiveAnchor.longitude },
       { latitude, longitude }
     );
-
-    if (distanceToAnchor > MAX_DISCOVERY_RADIUS_METERS) {
-      return {
-        venues: [],
-        provenance: {
-          source: 'UNAVAILABLE',
-          provider: 'Boundary Enforcer',
-          isDemoMode,
-          externalApi: false,
-          registryCount: 0,
-          providerFetchedCount: 0,
-          communityCount: 0,
-          finalVenueCount: 0,
-          cacheHits: 0,
-          cacheMisses: 1,
-          discoveryAnchor: {
-            ...effectiveAnchor,
-            distanceToQueryMeters: distanceToAnchor,
-            maxDiscoveryRadiusMeters: MAX_DISCOVERY_RADIUS_METERS,
-          },
-          warning: `DISCOVERY_BOUNDARY_EXCEEDED: Requested query center (${distanceToAnchor}m) exceeds the 10,000m maximum discovery boundary.`,
-        },
-      };
-    }
 
     const isFresh = !forceRefresh && this.isAreaFresh(latitude, longitude);
     let provenanceSource: ProvenanceSource = 'REGISTRY_CACHE';
@@ -557,7 +605,7 @@ export class VenueRegistryService {
       }
     }
 
-    // 3. Collect matching venues from registry
+    // 3. Collect matching venues from registry strictly inside the requested radius
     let localVenues = this.getLocalVenuesInRadius(latitude, longitude, radiusMeters);
 
     if (category) {
@@ -599,7 +647,6 @@ export class VenueRegistryService {
         discoveryAnchor: {
           ...effectiveAnchor,
           distanceToQueryMeters: distanceToAnchor,
-          maxDiscoveryRadiusMeters: MAX_DISCOVERY_RADIUS_METERS,
         },
         warning,
       },

@@ -230,13 +230,13 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
         video.oncanplay = tryPlay;
         video.onloadeddata = tryPlay;
       } catch (err) {
-        console.error('Error attaching stream to video:', err);
+        console.warn('Error attaching stream to video element:', err);
       }
     },
     [logDiagnostics]
   );
 
-  // Initialize and start live camera with multi-tier mobile constraint fallbacks
+  // Initialize and start live camera with robust multi-tier mobile/browser constraint fallbacks
   const startCamera = useCallback(
     async (targetFacing: 'environment' | 'user') => {
       stopActiveStream();
@@ -245,13 +245,14 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setCameraPermission('unavailable');
-        setErrorMessage('Trình duyệt hoặc môi trường không hỗ trợ MediaDevices.');
+        setErrorMessage('Trình duyệt hoặc môi trường hiện tại không hỗ trợ truy cập MediaDevices.');
         return;
       }
 
       let stream: MediaStream | null = null;
+      let lastError: any = null;
 
-      // Tier 1: Mobile-friendly facingMode constraint (Portrait & Landscape native)
+      // Tier 1: Ideal facingMode constraint (Portrait & Landscape native)
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -260,27 +261,80 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
           audio: false,
         });
       } catch (tier1Err) {
-        console.warn('Tier 1 constraints failed, trying basic video:', tier1Err);
-        // Tier 2: Basic fallback
+        lastError = tier1Err;
+        // Tier 2: Opposite or relaxed facingMode
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
+            video: {
+              facingMode: targetFacing === 'user' ? 'user' : 'environment',
+            },
             audio: false,
           });
-        } catch (tier2Err: any) {
-          console.error('All camera constraint tiers failed:', tier2Err);
-          if (tier2Err.name === 'NotAllowedError' || tier2Err.name === 'PermissionDeniedError') {
-            setCameraPermission('denied');
-            setErrorMessage('Bạn đã từ chối cấp quyền camera. Vui lòng cho phép quyền trong cài đặt.');
-          } else if (tier2Err.name === 'NotFoundError' || tier2Err.name === 'DevicesNotFoundError') {
-            setCameraPermission('unavailable');
-            setErrorMessage('Không tìm thấy thiết bị camera.');
-          } else {
-            setCameraPermission('error');
-            setErrorMessage(tier2Err.message || 'Không thể khởi tạo camera.');
+        } catch (tier2Err) {
+          lastError = tier2Err;
+          // Tier 3: Standard resolution relaxed video
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+              audio: false,
+            });
+          } catch (tier3Err) {
+            lastError = tier3Err;
+            // Tier 4: Basic boolean video
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false,
+              });
+            } catch (tier4Err) {
+              lastError = tier4Err;
+              // Tier 5: Direct device enumeration if available
+              if (navigator.mediaDevices.enumerateDevices) {
+                try {
+                  const devices = await navigator.mediaDevices.enumerateDevices();
+                  const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+                  if (videoDevices.length > 0 && videoDevices[0].deviceId) {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                      video: { deviceId: { exact: videoDevices[0].deviceId } },
+                      audio: false,
+                    });
+                  }
+                } catch (tier5Err) {
+                  lastError = tier5Err;
+                }
+              }
+            }
           }
-          return;
         }
+      }
+
+      if (!stream) {
+        console.warn('[BiteQuest] Camera hardware unavailable or in use:', lastError?.message || lastError);
+        const errName = lastError?.name || '';
+        const errMsg = lastError?.message || '';
+
+        if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+          setCameraPermission('denied');
+          setErrorMessage('Quyền camera chưa được cấp. Bạn có thể cho phép trong cài đặt trình duyệt hoặc chọn ảnh từ máy.');
+        } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+          setCameraPermission('unavailable');
+          setErrorMessage('Không tìm thấy thiết bị camera trên máy.');
+        } else if (
+          errName === 'NotReadableError' ||
+          errName === 'AbortError' ||
+          errMsg.includes('Could not start video source') ||
+          errMsg.includes('in use')
+        ) {
+          setCameraPermission('unavailable');
+          setErrorMessage('Camera đang được ứng dụng khác sử dụng hoặc không thể mở luồng video. Bạn có thể tải ảnh từ máy hoặc dùng ảnh thử nghiệm.');
+        } else {
+          setCameraPermission('error');
+          setErrorMessage(errMsg || 'Không thể khởi tạo camera. Bạn có thể chọn ảnh từ máy.');
+        }
+        return;
       }
 
       if (stream) {
@@ -560,6 +614,51 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // Mock / Sample Food Photo testing helper (when hardware webcam is busy or unavailable)
+  const handleUseSamplePhoto = (sampleIdx = 0) => {
+    const samples = [
+      'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800&auto=format&fit=crop&q=80', // Bún cá
+      'https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=800&auto=format&fit=crop&q=80', // Phở bò
+      'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&auto=format&fit=crop&q=80', // Cà phê trứng
+    ];
+    const chosenUrl = samples[sampleIdx % samples.length];
+
+    // Create a local canvas snapshot to get a reliable data URL
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (canvasRef.current) {
+        const canvas = canvasRef.current;
+        canvas.width = 800;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, 800, 600);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          setOriginalEvidence(dataUrl);
+          setIsGalleryUpload(false);
+          setCaptureStep('review');
+          stopActiveStream();
+          triggerVerification(dataUrl, false);
+          return;
+        }
+      }
+      setOriginalEvidence(chosenUrl);
+      setIsGalleryUpload(false);
+      setCaptureStep('review');
+      stopActiveStream();
+      triggerVerification(chosenUrl, false);
+    };
+    img.onerror = () => {
+      setOriginalEvidence(chosenUrl);
+      setIsGalleryUpload(false);
+      setCaptureStep('review');
+      stopActiveStream();
+      triggerVerification(chosenUrl, false);
+    };
+    img.src = chosenUrl;
   };
 
   // Retake / Reset to live camera
@@ -892,21 +991,33 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
 
               <div className="flex flex-col gap-2 w-full pt-1">
                 <button
-                  onClick={() => startCamera(facingMode)}
-                  className="w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white font-heading text-xs font-bold py-3 rounded-full shadow-lg shadow-[#FF6B35]/30 active:scale-95 transition-all flex items-center justify-center gap-1.5"
-                  id="btn-retry-camera-permission"
+                  type="button"
+                  onClick={() => handleUseSamplePhoto(0)}
+                  className="w-full bg-[#FF6B35] hover:bg-[#E85D2A] text-white font-heading text-xs font-bold py-3 rounded-full shadow-lg shadow-[#FF6B35]/30 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  id="btn-use-sample-dish"
                 >
-                  <RefreshCw className="w-4 h-4" />
-                  Thử lại cấp quyền
+                  <Sparkles className="w-4 h-4 text-[#FFD166]" />
+                  Dùng ảnh món mẫu thử nghiệm
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full bg-white/15 hover:bg-white/20 text-white font-heading text-xs font-semibold py-2.5 rounded-full border border-white/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                  className="w-full bg-white/15 hover:bg-white/20 text-white font-heading text-xs font-semibold py-2.5 rounded-full border border-white/20 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   id="btn-fallback-gallery"
                 >
                   <ImageIcon className="w-4 h-4" />
-                  Chọn ảnh từ thư viện
+                  Chọn ảnh từ thư viện máy
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => startCamera(facingMode)}
+                  className="w-full bg-black/40 hover:bg-black/60 text-white/90 font-heading text-xs font-medium py-2 rounded-full border border-white/10 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  id="btn-retry-camera-permission"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Thử kết nối lại camera
                 </button>
               </div>
             </div>

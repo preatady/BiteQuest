@@ -27,7 +27,7 @@ export const DiscoveryPeekSheet: React.FC<DiscoveryPeekSheetProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // 1. Hero Selection Logic
+  // 1. Hero Context Selection Logic
   const heroOpportunity = useMemo(() => {
     if (!todayOpportunities || todayOpportunities.length === 0) return null;
     const sorted = [...todayOpportunities].sort((a, b) => {
@@ -38,9 +38,9 @@ export const DiscoveryPeekSheet: React.FC<DiscoveryPeekSheetProps> = ({
     return sorted[0];
   }, [todayOpportunities]);
 
-  // 2. Truthful Location Copy
-  const heroTitle = isRealUserLocation ? 'Hôm nay quanh bạn' : 'Hôm nay ở khu vực này';
-  const locationPhrase = isRealUserLocation ? 'quanh đây' : 'trong khu vực này';
+  // 2. Truthful Location Copy & Context
+  const heroTitle = isRealUserLocation ? 'Khám phá gần bạn' : 'Gợi ý trong khu vực này';
+  const locationPhrase = isRealUserLocation ? 'quanh bạn' : 'khu vực này';
 
   if (isLoading && totalVenuesCount === 0) {
     return null;
@@ -54,115 +54,179 @@ export const DiscoveryPeekSheet: React.FC<DiscoveryPeekSheetProps> = ({
 
   return (
     <div
-      className="absolute bottom-22 left-3 z-30 pointer-events-auto transition-all duration-300 ease-out"
-      id="today-discovery-floating-widget"
+      className="absolute bottom-20 left-3 right-3 md:left-1/2 md:-translate-x-1/2 md:w-[480px] z-30 pointer-events-auto transition-all duration-300 ease-out"
+      id="smart-discovery-card-container"
     >
-      {/* 1. COMPACT CORNER ICON / PILL (When collapsed) */}
-      {!isOpen && (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="group bg-[#FDFCF8]/95 hover:bg-white active:scale-95 text-[#2D2926] backdrop-blur-md px-3.5 py-2.5 rounded-full shadow-[0_4px_18px_rgba(45,41,38,0.15)] border border-[#2D2926]/12 flex items-center gap-2 transition-all cursor-pointer hover:shadow-lg"
-          id="btn-open-discovery-peek"
-          title="Xem gợi ý ẩm thực hôm nay"
-        >
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF6B35] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#FF6B35]"></span>
-          </span>
-
-          <span className="font-heading text-xs font-bold tracking-tight text-[#2D2926]">
-            Hôm nay
-          </span>
-
-          <span className="bg-[#FF6B35]/15 text-[#FF6B35] font-heading text-[10px] font-black px-1.5 py-0.5 rounded-full">
-            {todayCount} gợi ý
-          </span>
-
-          <span className="material-symbols-outlined text-[16px] text-[#8D7168] group-hover:text-[#FF6B35] group-hover:-translate-y-0.5 transition-transform">
-            expand_less
-          </span>
-        </button>
-      )}
-
-      {/* 2. EXPANDED POPUP CARD (When tapped) */}
-      {isOpen && (
+      {/* 1. COLLAPSED SMART GLANCE BAR (Default Context-Aware Action Card) */}
+      {!isOpen && heroOpportunity && (
         <div
-          className="w-[calc(100vw-24px)] max-w-sm sm:max-w-md bg-[#FDFCF8]/98 backdrop-blur-md rounded-3xl border border-[#2D2926]/12 shadow-[0_8px_32px_rgba(45,41,38,0.2)] p-4 flex flex-col gap-3 animate-slide-up"
-          id="today-discovery-popover"
+          onClick={() => setIsOpen(true)}
+          className="bg-white/96 hover:bg-white active:scale-[0.99] text-[#2D2926] backdrop-blur-md px-3.5 py-2.5 rounded-2xl sm:rounded-full shadow-[0_4px_24px_rgba(45,41,38,0.14)] border border-[#2D2926]/10 flex items-center justify-between gap-2.5 transition-all cursor-pointer group"
+          id="smart-discovery-glance-bar"
+          role="button"
+          tabIndex={0}
+          aria-label="Mở danh sách gợi ý khám phá hôm nay"
         >
-          {/* Header Row */}
-          <div className="flex items-center justify-between border-b border-[#2D2926]/8 pb-2.5">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-xl bg-[#FF6B35]/15 text-[#FF6B35] flex items-center justify-center text-sm font-bold">
-                📍
-              </div>
-              <div>
-                <h3 className="font-heading text-xs font-extrabold uppercase tracking-wider text-[#594139]">
-                  {heroTitle}
-                </h3>
-                <p className="text-[11px] text-[#8D7168]">
-                  {totalVenuesCount} địa điểm {locationPhrase} • Chọn {todayCount} nơi đáng thử
-                </p>
-              </div>
+          {/* Left Context Pulse Indicator */}
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#FF6B35] to-[#FFA07A] flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-2xs">
+              {heroOpportunity.type === 'JOURNEY_MATCH'
+                ? '🎯'
+                : heroOpportunity.type === 'SCOUT'
+                ? '⭐'
+                : '📍'}
             </div>
 
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 leading-tight">
+                <span className="font-heading text-[12px] sm:text-[13px] font-bold text-[#2D2926] truncate">
+                  {heroOpportunity.title}
+                </span>
+
+                {heroOpportunity.type === 'JOURNEY_MATCH' && (
+                  <span className="bg-[#FF9F1C]/20 text-[#9E5D00] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full shrink-0">
+                    Hành trình
+                  </span>
+                )}
+                {heroOpportunity.type === 'SCOUT' && (
+                  <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full shrink-0">
+                    First Bite
+                  </span>
+                )}
+              </div>
+
+              <p className="text-[11px] text-[#FF6B35] font-semibold truncate leading-tight mt-0.5">
+                {heroOpportunity.reasonPrimary || `${todayCount} điểm đến hấp dẫn ${locationPhrase}`}
+              </p>
+            </div>
+          </div>
+
+          {/* Right Action & Expand Trigger */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
-              className="w-7 h-7 rounded-full bg-[#FAF9F5] hover:bg-[#F4F4F0] text-[#594139] hover:text-[#2D2926] flex items-center justify-center transition-all cursor-pointer active:scale-90"
-              title="Thu nhỏ icon"
-              id="btn-close-discovery-popover"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectVenue(heroOpportunity.venueId);
+              }}
+              className="px-2.5 py-1 rounded-full bg-[#FF6B35]/10 hover:bg-[#FF6B35] text-[#FF6B35] hover:text-white font-heading text-[11px] font-bold transition-colors cursor-pointer"
+              title="Xem vị trí trên bản đồ"
             >
-              <span className="material-symbols-outlined text-[18px]">close</span>
+              Xem ngay
             </button>
-          </div>
 
-          {/* List of Today Opportunities */}
-          <div className="space-y-2 max-h-[48vh] overflow-y-auto pr-0.5 no-scrollbar">
-            {todayOpportunities.map((opp, idx) => (
-              <div
-                key={opp.venueId || idx}
-                onClick={() => {
-                  onSelectVenue(opp.venueId);
-                  setIsOpen(false);
-                }}
-                className="bg-white hover:bg-[#FAF9F5] p-3 rounded-2xl border border-[#2D2926]/8 transition-all cursor-pointer flex items-center justify-between gap-2.5 shadow-2xs hover:shadow-xs active:scale-[0.98]"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="font-heading text-xs font-bold text-[#2D2926] truncate">
-                      {opp.venueName}
-                    </span>
-                    {opp.type === 'JOURNEY_MATCH' && (
-                      <span className="bg-[#FF9F1C]/20 text-[#9E5D00] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full shrink-0">
-                        Hành trình
-                      </span>
-                    )}
-                    {opp.type === 'SCOUT' && (
-                      <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full shrink-0">
-                        First Bite
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-[#FF6B35] font-semibold truncate">
-                    {opp.headline}
-                  </p>
-                  <p className="text-[10px] text-[#8D7168] truncate mt-0.5">
-                    {opp.subheadline}
-                  </p>
-                </div>
-
-                <div className="shrink-0 flex items-center">
-                  <span className="w-8 h-8 rounded-full bg-[#FF6B35]/10 text-[#FF6B35] flex items-center justify-center text-xs font-bold hover:bg-[#FF6B35] hover:text-white transition-colors">
-                    <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-                  </span>
-                </div>
-              </div>
-            ))}
+            <span className="w-6 h-6 rounded-full bg-[#2D2926]/5 flex items-center justify-center text-[#8D7168] group-hover:text-[#2D2926] transition-colors">
+              <span className="material-symbols-outlined text-[16px]">expand_less</span>
+            </span>
           </div>
         </div>
+      )}
+
+      {/* 2. EXPANDED SMART DISCOVERY BOTTOM SHEET (When tapped) */}
+      {isOpen && (
+        <>
+          {/* Backdrop to dismiss when clicking anywhere on map */}
+          <div
+            className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[2px] transition-opacity"
+            onClick={() => setIsOpen(false)}
+            id="discovery-peek-backdrop"
+          />
+
+          <div
+            className="fixed bottom-20 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-[480px] z-50 bg-[#FDFCF8]/98 backdrop-blur-md rounded-3xl border border-[#2D2926]/12 shadow-[0_16px_48px_rgba(45,41,38,0.25)] p-4 sm:p-5 flex flex-col gap-3.5 animate-slide-up"
+            id="today-discovery-popover"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Danh sách gợi ý ẩm thực hôm nay"
+          >
+            {/* Header Row */}
+            <div className="flex items-center justify-between border-b border-[#2D2926]/8 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#FF6B35]/15 text-[#FF6B35] flex items-center justify-center text-sm font-bold shadow-2xs">
+                  ✨
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="font-heading text-xs sm:text-sm font-extrabold uppercase tracking-wider text-[#2D2926]">
+                      {heroTitle}
+                    </h3>
+                    <span className="bg-[#2EC4B6]/15 text-[#006A62] text-[8.5px] font-heading font-black px-1.5 py-0.2 rounded-md uppercase">
+                      AI Riser Engine
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#8D7168] mt-0.5">
+                    {totalVenuesCount} địa điểm {locationPhrase} • Chọn lọc {todayCount} nơi đáng thử nhất
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="w-8 h-8 rounded-full bg-[#2D2926]/5 hover:bg-[#2D2926]/10 text-[#594139] hover:text-[#2D2926] flex items-center justify-center transition-all cursor-pointer active:scale-90"
+                title="Thu nhỏ danh sách"
+                id="btn-close-discovery-popover"
+                aria-label="Đóng danh sách"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            {/* List of Contextual Opportunities */}
+            <div className="space-y-2 max-h-[48vh] overflow-y-auto pr-0.5 no-scrollbar">
+              {todayOpportunities.map((opp, idx) => (
+                <div
+                  key={opp.venueId || idx}
+                  onClick={() => {
+                    onSelectVenue(opp.venueId);
+                    setIsOpen(false);
+                  }}
+                  className="bg-white hover:bg-[#FAF9F5] p-3.5 rounded-2xl border border-[#2D2926]/8 transition-all cursor-pointer flex items-center justify-between gap-3 shadow-2xs hover:shadow-xs active:scale-[0.99] group"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="font-heading text-xs sm:text-sm font-bold text-[#2D2926] group-hover:text-[#FF6B35] transition-colors truncate">
+                        {opp.title}
+                      </span>
+                      {opp.type === 'JOURNEY_MATCH' && (
+                        <span className="bg-[#FF9F1C]/20 text-[#9E5D00] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full shrink-0">
+                          Hành trình
+                        </span>
+                      )}
+                      {opp.type === 'SCOUT' && (
+                        <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full shrink-0">
+                          First Bite +2x
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11.5px] text-[#FF6B35] font-semibold truncate leading-tight">
+                      {opp.reasonPrimary}
+                    </p>
+                    {opp.reasonSecondary && (
+                      <p className="text-[10.5px] text-[#8D7168] truncate mt-0.5 leading-tight">
+                        {opp.reasonSecondary}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 flex items-center">
+                    <span className="w-8 h-8 rounded-full bg-[#FF6B35]/10 text-[#FF6B35] group-hover:bg-[#FF6B35] group-hover:text-white flex items-center justify-center transition-all shadow-2xs">
+                      <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Subtle Footer Note */}
+            <div className="pt-2 border-t border-[#2D2926]/6 flex items-center justify-between text-[10px] text-[#8D7168]">
+              <span>Tự động tối ưu theo vị trí và khẩu vị</span>
+              <span className="font-heading font-bold text-[#FF6B35]">BiteQuest × AI Riser</span>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
 };
+
