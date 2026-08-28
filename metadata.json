@@ -1,0 +1,7 @@
+{
+  "name": "BiteQuest",
+  "description": "Social food exploration app cho Gen Z - Đi ăn, chụp món, xác minh AI Gemini, lưu Food Passport và chia sẻ với bạn bè.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

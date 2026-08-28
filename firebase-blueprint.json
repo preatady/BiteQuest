@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "User": {
+      "collection": "users",
+      "description": "User profile with level, XP, bio, and food passport stats",
+      "fields": {
+        "id": { "type": "string", "required": true },
+        "name": { "type": "string", "required": true },
+        "handle": { "type": "string", "required": true },
+        "avatar": { "type": "string" },
+        "xp": { "type": "number", "defaultValue": 0 },
+        "level": { "type": "number", "defaultValue": 1 },
+        "title": { "type": "string", "defaultValue": "Bite Explorer" },
+        "streak": { "type": "number", "defaultValue": 1 },
+        "bitesCount": { "type": "number", "defaultValue": 0 },
+        "firstBitesCount": { "type": "number", "defaultValue": 0 },
+        "communitySpotsFound": { "type": "number", "defaultValue": 0 },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "Place": {
+      "collection": "places",
+      "description": "Restaurants and community spots",
+      "fields": {
+        "id": { "type": "string", "required": true },
+        "googlePlaceId": { "type": "string" },
+        "name": { "type": "string", "required": true },
+        "category": { "type": "string", "required": true },
+        "address": { "type": "string", "required": true },
+        "lat": { "type": "number", "required": true },
+        "lng": { "type": "number", "required": true },
+        "district": { "type": "string" },
+        "city": { "type": "string", "defaultValue": "Hà Nội" },
+        "isCommunitySpot": { "type": "boolean", "defaultValue": false },
+        "communityVerified": { "type": "boolean", "defaultValue": false },
+        "firstDiscovererId": { "type": "string" },
+        "firstDiscovererName": { "type": "string" },
+        "bitesCount": { "type": "number", "defaultValue": 0 },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "Checkin": {
+      "collection": "checkins",
+      "description": "Food bites captured and verified by users",
+      "fields": {
+        "id": { "type": "string", "required": true },
+        "userId": { "type": "string", "required": true },
+        "userName": { "type": "string", "required": true },
+        "userAvatar": { "type": "string" },
+        "placeId": { "type": "string", "required": true },
+        "placeName": { "type": "string", "required": true },
+        "dishName": { "type": "string", "required": true },
+        "category": { "type": "string", "required": true },
+        "photoUrl": { "type": "string", "required": true },
+        "caption": { "type": "string" },
+        "isFirstBite": { "type": "boolean", "defaultValue": false },
+        "verified": { "type": "boolean", "defaultValue": true },
+        "confidence": { "type": "number", "defaultValue": 0.9 },
+        "xpEarned": { "type": "number", "defaultValue": 50 },
+        "likes": { "type": "number", "defaultValue": 0 },
+        "cheers": { "type": "number", "defaultValue": 0 },
+        "timestamp": { "type": "string", "required": true }
+      }
+    },
+    "PassportProgress": {
+      "collection": "passportProgress",
+      "description": "Food category progress for user passport",
+      "fields": {
+        "userId": { "type": "string", "required": true },
+        "category": { "type": "string", "required": true },
+        "discovered": { "type": "number", "defaultValue": 0 },
+        "total": { "type": "number", "defaultValue": 10 }
+      }
+    },
+    "Venue": {
+      "collection": "venues",
+      "description": "Canonical venue registry supporting 10km discovery with multi-source provenance and verified bite count",
+      "fields": {
+        "canonicalVenueId": { "type": "string", "required": true },
+        "name": { "type": "string", "required": true },
+        "normalizedName": { "type": "string", "required": true },
+        "latitude": { "type": "number", "required": true },
+        "longitude": { "type": "number", "required": true },
+        "address": { "type": "string" },
+        "district": { "type": "string" },
+        "city": { "type": "string", "defaultValue": "Hà Nội" },
+        "category": { "type": "string", "required": true },
+        "categoryLabel": { "type": "string" },
+        "primarySource": { "type": "string", "required": true },
+        "isCommunitySpot": { "type": "boolean", "defaultValue": false },
+        "verifiedBiteCount": { "type": "number", "defaultValue": 0 },
+        "lastVerifiedBiteAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "lastSyncedAt": { "type": "string" }
+      }
+    }
+  }
+}

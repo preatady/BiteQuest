@@ -1,0 +1,123 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.auth.uid == userId &&
+        (!('xp' in request.resource.data) || request.resource.data.xp == 0) &&
+        (!('level' in request.resource.data) || request.resource.data.level == 1) &&
+        (!('nextLevelXp' in request.resource.data) || request.resource.data.nextLevelXp == 400) &&
+        (!('firstBitesCount' in request.resource.data) || request.resource.data.firstBitesCount == 0) &&
+        (!('badges' in request.resource.data) || request.resource.data.badges.size() == 0) &&
+        (!('availableTitles' in request.resource.data) || request.resource.data.availableTitles.size() == 0) &&
+        (!('districtProgress' in request.resource.data) || request.resource.data.districtProgress.size() == 0) &&
+        (!('knowledgeProgress' in request.resource.data));
+      // Client cannot directly modify trust & game economy fields (xp, level, nextLevelXp, stats, badges, availableTitles, knowledgeProgress, districtProgress, questCompletion)
+      // Client may only switch activeTitle if it is already server-unlocked in resource.data.availableTitles
+      allow update: if isOwner(userId) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'xp', 'level', 'nextLevelXp', 'firstBitesCount', 'communityVerifiedCount', 'stats', 'badges', 'availableTitles', 'knowledgeProgress', 'districtProgress', 'questCompletion'
+        ])) &&
+        (!('activeTitle' in request.resource.data) || 
+          request.resource.data.activeTitle == resource.data.activeTitle || 
+          (('availableTitles' in resource.data) && (request.resource.data.activeTitle in resource.data.availableTitles)));
+      allow delete: if isOwner(userId);
+    }
+
+    // Usernames index for uniqueness checks & registration
+    match /usernames/{username} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    // Places & Community Spots
+    match /places/{placeId} {
+      allow read: if true;
+      // Allow logged-in users to create community spots in 'pending' unverified status only
+      allow create: if isAuthenticated() &&
+        (!('communityStatus' in request.resource.data) || request.resource.data.communityStatus == 'pending') &&
+        (!('communityVerified' in request.resource.data) || request.resource.data.communityVerified == false);
+      // Client updates cannot escalate community verification status
+      allow update: if isAuthenticated() &&
+        (!('communityVerified' in request.resource.data) || request.resource.data.communityVerified == resource.data.communityVerified) &&
+        (!('communityStatus' in request.resource.data) || request.resource.data.communityStatus == resource.data.communityStatus);
+      allow delete: if isAuthenticated() && resource.data.firstDiscovererId == request.auth.uid;
+    }
+
+    // Canonical Venue Registry (Public read, Server-authoritative write via Admin SDK)
+    match /venues/{venueId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Check-ins / Bites
+    match /checkins/{checkinId} {
+      allow read: if true;
+      // Client SDK create cannot self-assign isVerified = true or forged verifiedAt
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        (!('isVerified' in request.resource.data) || request.resource.data.isVerified == false) &&
+        (!('verifiedAt' in request.resource.data) || request.resource.data.verifiedAt == null);
+      // Updates cannot alter isVerified status
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid &&
+        (!('isVerified' in request.resource.data) || request.resource.data.isVerified == resource.data.isVerified);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Verification Sessions (Private to backend / Admin SDK only)
+    match /verificationSessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    // Spot Verifications (Quán ngõ 2-user verification record)
+    match /spotVerifications/{verificationId} {
+      allow read: if true;
+      // Creation/updates must be processed through backend verification transactions
+      allow write: if false;
+    }
+
+    // Passport Progress (Managed server-authoritatively)
+    match /passportProgress/{progressId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Achievements (Managed server-authoritatively)
+    match /achievements/{achievementId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Reactions (Cheers, likes)
+    match /reactions/{reactionId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Reports (Private)
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if isAuthenticated();
+    }
+  }
+}

@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sunset-orange: #FF6B35;
+  --color-fresh-mint: #2EC4B6;
+  --color-creamy-base: #FDFCF8;
+  --color-deep-cocoa: #2D2926;
+  --color-surface-container: #EFEEEA;
+  --color-surface-container-low: #F4F4F0;
+  --color-surface-container-high: #E9E8E4;
+  --color-surface-container-highest: #E3E2DF;
+  --color-surface-container-lowest: #FFFFFF;
+  --color-tertiary-container: #00A7CB;
+  --color-primary-container: #FF6B35;
+  --color-outline-variant: #E1BFB5;
+  --font-display: "Lexend", sans-serif;
+  --font-body: "Be Vietnam Pro", sans-serif;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-creamy-base);
+  color: var(--color-deep-cocoa);
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Mobile safe area helpers */
+.safe-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+h1, h2, h3, h4, .font-heading {
+  font-family: var(--font-display);
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+.material-symbols-outlined.fill {
+  font-variation-settings: 'FILL' 1;
+}
+
+/* Custom scrollbars hidden */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Pulse animation for map & badges */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.6);
+  }
+  70% {
+    transform: scale(1.05);
+    opacity: 0;
+    box-shadow: 0 0 0 16px rgba(255, 107, 53, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0;
+    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0);
+  }
+}
+
+.pulse-ring-animation {
+  animation: pulse-ring 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.squishy-card {
+  box-shadow: 0 8px 30px rgba(45, 41, 38, 0.06);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+.squishy-card:active {
+  transform: scale(0.98);
+}
+
+/* MapLibre container styles */
+.maplibregl-map {
+  width: 100% !important;
+  height: 100% !important;
+  position: absolute !important;
+  inset: 0 !important;
+}
+
+.maplibregl-canvas-container,
+.maplibregl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
