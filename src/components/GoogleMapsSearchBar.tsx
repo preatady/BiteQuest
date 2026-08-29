@@ -2,7 +2,20 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getDistance } from 'geolib';
 import { Place } from '../types';
 import { UnifiedPlace } from '../services/maps/types';
-import { CANONICAL_CATEGORIES, classifyVenue } from '../services/maps/categoryNormalizer';
+import {
+  CANONICAL_CATEGORIES,
+  classifyVenue,
+  normalizeVietnameseText,
+  getVenueSearchRelevance,
+} from '../services/maps/categoryNormalizer';
+import {
+  parseSearchIntentWithGemini,
+  filterPlacesBySearchIntent,
+  SearchIntent,
+  isNaturalLanguageQuery,
+} from '../services/searchIntentService';
+
+export { parseSearchIntentWithGemini };
 
 export interface SearchResultItem {
   id: string;
@@ -338,13 +351,15 @@ export const HANOI_DISCOVERY_LOCATIONS = VIETNAM_DISCOVERY_LOCATIONS;
 
 // Popular culinary dishes and categories for quick filtering
 const POPULAR_DISHES = [
-  { title: 'Phở Bò & Phở Gà', category: 'PHO_NOODLES', glyph: '🍜' },
-  { title: 'Bún Chả & Bún Đậu', category: 'VIETNAMESE', glyph: '🥗' },
-  { title: 'Cà Phê Trứng & Trà Đá', category: 'CAFE', glyph: '☕' },
-  { title: 'Bánh Mì Sốt Vang', category: 'STREET_FOOD', glyph: '🥖' },
-  { title: 'Lẩu Riêu Cua & Nướng', category: 'HOTPOT_BBQ', glyph: '🍲' },
-  { title: 'Chè Bưởi & Kem Tràng Tiền', category: 'DESSERT', glyph: '🍧' },
-  { title: 'Cơm Tấm & Cơm Bình Dân', category: 'VIETNAMESE', glyph: '🍚' },
+  { title: 'Phở Bò & Phở Gà', category: 'PHO', glyph: '🍜' },
+  { title: 'Bún Chả, Bún Đậu & Mì', category: 'NOODLE', glyph: '🥗' },
+  { title: 'Cà Phê Trứng & Trà Quán', category: 'CAFE_DRINK', glyph: '☕' },
+  { title: 'Bánh Mì & Ăn Nhanh', category: 'FAST_FOOD', glyph: '🥖' },
+  { title: 'Lẩu Nóng & BBQ Nướng', category: 'HOTPOT', glyph: '🍲' },
+  { title: 'Chè & Tráng Miệng', category: 'BAKERY_DESSERT', glyph: '🍧' },
+  { title: 'Cơm Tấm & Cơm Niêu', category: 'RICE', glyph: '🍚' },
+  { title: 'Bia Hơi & Quán Nhậu', category: 'BAR_BEER', glyph: '🍺' },
+  { title: 'Quán Chay Thanh Tịnh', category: 'VEGETARIAN', glyph: '🌱' },
 ];
 
 const RECENT_SEARCHES_KEY = 'bitequest_recent_searches_v2';
@@ -370,7 +385,41 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const [parsedIntent, setParsedIntent] = useState<SearchIntent | null>(null);
   const recognitionRef = useRef<any>(null);
+
+  // Debounced AI Search Intent parsing for natural language queries
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setParsedIntent(null);
+      return;
+    }
+
+    if (!isNaturalLanguageQuery(trimmed)) {
+      setParsedIntent(null);
+      return;
+    }
+
+    let isMounted = true;
+    const timer = setTimeout(async () => {
+      try {
+        const intent = await parseSearchIntentWithGemini(trimmed);
+        if (isMounted) {
+          setParsedIntent(intent);
+        }
+      } catch {
+        if (isMounted) {
+          setParsedIntent(null);
+        }
+      }
+    }, 200);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
@@ -493,12 +542,14 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
     }
 
     const results: SearchResultItem[] = [];
+    const qRaw = searchQuery.trim().toLowerCase();
+    const qNorm = normalizeVietnameseText(qRaw);
 
     // 1. Match Districts & Landmarks
-    for (const loc of HANOI_DISCOVERY_LOCATIONS) {
-      const matchName = loc.name.toLowerCase().includes(normalizedQuery);
-      const matchDistrict = loc.district.toLowerCase().includes(normalizedQuery);
-      const matchAlias = loc.alias.some((a) => a.includes(normalizedQuery) || normalizedQuery.includes(a));
+    for (const loc of VIETNAM_DISCOVERY_LOCATIONS) {
+      const matchName = loc.name.toLowerCase().includes(qRaw) || normalizeVietnameseText(loc.name).includes(qNorm);
+      const matchDistrict = loc.district.toLowerCase().includes(qRaw) || normalizeVietnameseText(loc.district).includes(qNorm);
+      const matchAlias = loc.alias.some((a) => a.includes(qNorm) || qNorm.includes(a));
 
       if (matchName || matchDistrict || matchAlias) {
         results.push({
@@ -516,7 +567,9 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
 
     // 2. Match Dishes & Categories
     for (const dish of POPULAR_DISHES) {
-      if (dish.title.toLowerCase().includes(normalizedQuery) || dish.category.toLowerCase().includes(normalizedQuery)) {
+      const matchTitle = dish.title.toLowerCase().includes(qRaw) || normalizeVietnameseText(dish.title).includes(qNorm);
+      const matchCategory = dish.category.toLowerCase().includes(qNorm);
+      if (matchTitle || matchCategory) {
         results.push({
           id: `dish_${dish.category}_${dish.title}`,
           type: 'dish',
@@ -528,15 +581,21 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
       }
     }
 
-    // 3. Match Specific Venues
-    const venueMatches: SearchResultItem[] = [];
-    for (const p of places) {
-      const matchName = p.name.toLowerCase().includes(normalizedQuery);
-      const matchAddress = p.address?.toLowerCase().includes(normalizedQuery);
-      const matchDistrict = p.district?.toLowerCase().includes(normalizedQuery);
-      const matchCategory = p.categoryLabel?.toLowerCase().includes(normalizedQuery);
+    // 3. Match Specific Venues with Deduplication & Smart Relevance Scoring
+    const venueCandidates: Array<{
+      item: SearchResultItem;
+      score: number;
+      dist: number;
+      normName: string;
+      latKey: number;
+      lngKey: number;
+    }> = [];
 
-      if (matchName || matchAddress || matchDistrict || matchCategory) {
+    // 3a. AI Intent-Matched Venues (Smart Natural Language Intent Filtering)
+    if (parsedIntent && (parsedIntent.category !== 'any' || parsedIntent.vibe !== 'any' || parsedIntent.maxDistanceKm < 50)) {
+      const intentRanked = filterPlacesBySearchIntent(places, parsedIntent, currentLocation);
+      for (const cand of intentRanked) {
+        const p = cand.venue;
         const classification = classifyVenue({
           name: p.name,
           category: p.category,
@@ -544,34 +603,138 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
         });
         const catMeta = CANONICAL_CATEGORIES[classification.category] || CANONICAL_CATEGORIES.RESTAURANT;
 
-        let distanceMeters: number | undefined;
-        if (currentLocation && typeof p.latitude === 'number' && typeof p.longitude === 'number') {
-          distanceMeters = getDistance(currentLocation, { latitude: p.latitude, longitude: p.longitude });
+        const cleanAddressParts: string[] = [];
+        const rawAddr = (p.address || '').trim();
+        const rawDistrict = (p.district || '').trim();
+
+        if (rawAddr && rawAddr !== 'Hà Nội' && rawAddr !== 'Hà Nội, Hà Nội') {
+          const firstPart = rawAddr.split(',')[0].trim();
+          if (firstPart) cleanAddressParts.push(firstPart);
+        }
+        if (rawDistrict && !cleanAddressParts.includes(rawDistrict)) {
+          cleanAddressParts.push(rawDistrict);
+        }
+        if (cleanAddressParts.length === 0) {
+          cleanAddressParts.push('Hà Nội');
         }
 
-        venueMatches.push({
-          id: `venue_${p.id}`,
-          type: 'venue',
-          title: p.name,
-          subtitle: `${p.district || 'Hà Nội'} • ${p.address || ''}`,
-          category: classification.category,
-          categoryGlyph: catMeta.symbolGlyph || '🍴',
-          latitude: p.latitude,
-          longitude: p.longitude,
-          venue: p,
-          distanceMeters,
+        const subtitle = cleanAddressParts.join(' • ');
+        const normName = normalizeVietnameseText(p.name || '');
+        const latKey = Math.round(p.latitude * 2500);
+        const lngKey = Math.round(p.longitude * 2500);
+
+        venueCandidates.push({
+          item: {
+            id: `venue_${p.id}`,
+            type: 'venue',
+            title: p.name,
+            subtitle,
+            category: classification.category,
+            categoryGlyph: catMeta.symbolGlyph || '🍴',
+            latitude: p.latitude,
+            longitude: p.longitude,
+            venue: p,
+            distanceMeters: cand.distanceMeters,
+          },
+          score: 1000 + cand.score,
+          dist: cand.distanceMeters ?? 999999,
+          normName,
+          latKey,
+          lngKey,
         });
       }
     }
 
-    // Sort venues by distance if available, or relevance
-    venueMatches.sort((a, b) => (a.distanceMeters || 99999) - (b.distanceMeters || 99999));
+    // 3b. Standard Text / Keyword Search Scoring (Fallback & Exact Match)
+    for (const p of places) {
+      if (!p || typeof p.latitude !== 'number' || typeof p.longitude !== 'number') continue;
 
-    // Combine top venues (max 8)
-    results.push(...venueMatches.slice(0, 8));
+      let distanceMeters: number | undefined;
+      if (currentLocation) {
+        distanceMeters = getDistance(currentLocation, { latitude: p.latitude, longitude: p.longitude });
+      }
+
+      const score = getVenueSearchRelevance(p, searchQuery, distanceMeters);
+      if (score > 0) {
+        const classification = classifyVenue({
+          name: p.name,
+          category: p.category,
+          categoryLabel: p.categoryLabel,
+        });
+        const catMeta = CANONICAL_CATEGORIES[classification.category] || CANONICAL_CATEGORIES.RESTAURANT;
+
+        // Clean up subtitle to avoid redundant repetitive strings
+        const cleanAddressParts: string[] = [];
+        const rawAddr = (p.address || '').trim();
+        const rawDistrict = (p.district || '').trim();
+
+        if (rawAddr && rawAddr !== 'Hà Nội' && rawAddr !== 'Hà Nội, Hà Nội') {
+          const firstPart = rawAddr.split(',')[0].trim();
+          if (firstPart) cleanAddressParts.push(firstPart);
+        }
+        if (rawDistrict && !cleanAddressParts.includes(rawDistrict)) {
+          cleanAddressParts.push(rawDistrict);
+        }
+        if (cleanAddressParts.length === 0) {
+          cleanAddressParts.push('Hà Nội');
+        }
+
+        const subtitle = cleanAddressParts.join(' • ');
+        const normName = normalizeVietnameseText(p.name || '');
+        const latKey = Math.round(p.latitude * 2500);
+        const lngKey = Math.round(p.longitude * 2500);
+
+        venueCandidates.push({
+          item: {
+            id: `venue_${p.id}`,
+            type: 'venue',
+            title: p.name,
+            subtitle,
+            category: classification.category,
+            categoryGlyph: catMeta.symbolGlyph || '🍴',
+            latitude: p.latitude,
+            longitude: p.longitude,
+            venue: p,
+            distanceMeters,
+          },
+          score,
+          dist: distanceMeters ?? 999999,
+          normName,
+          latKey,
+          lngKey,
+        });
+      }
+    }
+
+    // Sort by relevance score desc, then by distance asc
+    venueCandidates.sort((a, b) => {
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return a.dist - b.dist;
+    });
+
+    // Deduplicate candidates (by ID and by Name + Geo Grid)
+    const seenGeoKeys = new Set<string>();
+    const seenIds = new Set<string>();
+    const topVenues: SearchResultItem[] = [];
+
+    for (const cand of venueCandidates) {
+      if (seenIds.has(cand.item.id)) continue;
+      const geoKey = `${cand.normName}_${cand.latKey}_${cand.lngKey}`;
+      if (seenGeoKeys.has(geoKey)) continue;
+
+      seenIds.add(cand.item.id);
+      seenGeoKeys.add(geoKey);
+      topVenues.push(cand.item);
+
+      if (topVenues.length >= 10) break;
+    }
+
+    results.push(...topVenues);
 
     return results;
-  }, [normalizedQuery, places, currentLocation]);
+  }, [normalizedQuery, searchQuery, places, currentLocation, parsedIntent]);
 
   const handleSelectResult = (item: SearchResultItem) => {
     saveRecentSearch(item.title);
@@ -582,10 +745,10 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
       onSearchQueryChange(item.title);
     } else if (item.type === 'district' && typeof item.latitude === 'number' && typeof item.longitude === 'number') {
       onSelectLocation({ latitude: item.latitude, longitude: item.longitude }, item.zoom || 15);
-      onSearchQueryChange(item.title);
+      onSearchQueryChange('');
     } else if (item.type === 'dish' && item.category && onSelectCategory) {
       onSelectCategory(item.category);
-      onSearchQueryChange(item.title);
+      onSearchQueryChange('');
     }
   };
 
@@ -865,8 +1028,8 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
                         key={dish.title}
                         type="button"
                         onClick={() => {
-                          onSearchQueryChange(dish.title);
                           if (onSelectCategory) onSelectCategory(dish.category);
+                          onSearchQueryChange('');
                           saveRecentSearch(dish.title);
                           setIsOpen(false);
                         }}

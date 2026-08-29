@@ -1431,6 +1431,278 @@ Nhiệm vụ: Trích xuất thông tin cấu trúc chính xác từ ảnh:
     });
   });
 
+  // 11b. Intent-Based Search Parsing with Gemini 3.7 Flash
+  const SearchIntentRequestSchema = z.object({
+    query: z.string().min(1).max(500),
+  });
+
+  const handleSearchIntentParsing = async (req: Request, res: Response) => {
+    const parsed = SearchIntentRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
+
+    const { query } = parsed.data;
+    const ai = getGeminiClient();
+
+    if (ai) {
+      try {
+        const systemPrompt = `You are the natural language Search Intent Parser for BiteQuest (a culinary & cafe discovery app in Vietnam).
+Parse the user's raw search query into structured JSON intent.
+
+JSON Schema format:
+{
+  "category": "cafe" | "food" | "fast_food" | "any",
+  "maxDistanceKm": number,
+  "vibe": "chill" | "noisy" | "romantic" | "any"
+}
+
+Categorization rules:
+- category:
+  * "cafe" for coffee, tea, cà phê, trà, trà sữa, matcha, cafe làm việc, quán nước, đồ uống
+  * "food" for phở, bún, mì, lẩu, nướng, cơm, ăn tối, ăn trưa, nhà hàng, đồ ăn mặn, hải sản
+  * "fast_food" for bánh mì, ăn vặt, chè, kem, tráng miệng, fast food, xiên que, burger
+  * "any" if not specified or generic
+- maxDistanceKm:
+  * If user expresses nearby preferences (e.g. "gần đây", "đừng đi xa", "quanh đây", "gần nhà", "đi bộ được") -> return 2.5
+  * If user specifies a distance (e.g. "dưới 5km", "trong vòng 3km") -> return that number
+  * Otherwise default to 50
+- vibe:
+  * "chill" for "chill", "yên tĩnh", "làm việc", "học bài", "nhẹ nhàng", "thoáng mát", "view đẹp"
+  * "noisy" for "nhộn nhịp", "đông vui", "nhậu", "quán nhậu", "bia bọt", "tụ tập"
+  * "romantic" for "hẹn hò", "lãng mạn", "date", "người yêu", "2 người"
+  * "any" otherwise
+
+Return strictly valid JSON matching this schema without markdown fences.`;
+
+        const geminiCall = ai.models.generateContent({
+          model: 'gemini-3.7-flash',
+          contents: [{ role: 'user', parts: [{ text: `Search query: "${query}"` }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                category: {
+                  type: Type.STRING,
+                  enum: ['cafe', 'food', 'fast_food', 'any'],
+                },
+                maxDistanceKm: {
+                  type: Type.NUMBER,
+                },
+                vibe: {
+                  type: Type.STRING,
+                  enum: ['chill', 'noisy', 'romantic', 'any'],
+                },
+              },
+              required: ['category', 'maxDistanceKm', 'vibe'],
+            },
+            temperature: 0.1,
+            maxOutputTokens: 250,
+          },
+        });
+
+        const response = await withTimeout(geminiCall, 4000, null);
+
+        if (response && response.text) {
+          const jsonText = response.text.trim();
+          const parsedResult = JSON.parse(jsonText);
+          return res.json({
+            success: true,
+            intent: {
+              category: parsedResult.category || 'any',
+              maxDistanceKm: Number(parsedResult.maxDistanceKm) || 50,
+              vibe: parsedResult.vibe || 'any',
+            },
+            source: 'gemini-3.7-flash',
+          });
+        }
+      } catch (err: any) {
+        logger.warn({ event: 'GEMINI_SEARCH_INTENT_ERROR', error: err?.message });
+      }
+    }
+
+    // Fallback: intelligent rule-based intent parsing
+    const norm = query.toLowerCase();
+    let cat = 'any';
+    if (norm.includes('cafe') || norm.includes('cà phê') || norm.includes('trà') || norm.includes('nước')) {
+      cat = 'cafe';
+    } else if (norm.includes('phở') || norm.includes('bún') || norm.includes('mì') || norm.includes('lẩu') || norm.includes('nướng') || norm.includes('cơm') || norm.includes('ăn')) {
+      cat = 'food';
+    } else if (norm.includes('bánh mì') || norm.includes('ăn vặt') || norm.includes('chè')) {
+      cat = 'fast_food';
+    }
+
+    let dist = 50;
+    if (norm.includes('gần') || norm.includes('đừng đi xa') || norm.includes('quanh đây')) {
+      dist = 2.5;
+    }
+
+    let vibe = 'any';
+    if (norm.includes('chill') || norm.includes('yên tĩnh') || norm.includes('làm việc') || norm.includes('view')) {
+      vibe = 'chill';
+    } else if (norm.includes('nhậu') || norm.includes('nhộn nhịp') || norm.includes('đông vui') || norm.includes('bia')) {
+      vibe = 'noisy';
+    } else if (norm.includes('hẹn hò') || norm.includes('lãng mạn') || norm.includes('date')) {
+      vibe = 'romantic';
+    }
+
+    return res.json({
+      success: true,
+      intent: {
+        category: cat,
+        maxDistanceKm: dist,
+        vibe: vibe,
+      },
+      source: 'server-rule-fallback',
+    });
+  };
+
+  app.post('/api/search/intent', handleSearchIntentParsing);
+  app.post('/api/ai/parse-search-intent', handleSearchIntentParsing);
+
+  // 11c. Explainable AI Decision Engine (Gemini 3.7 Flash)
+  const DecisionExplanationSchema = z.object({
+    options: z.array(
+      z.object({
+        name: z.string(),
+        durationMins: z.number(),
+        distanceKm: z.number(),
+        trafficLevel: z.string(),
+        floodRisk: z.string(),
+      })
+    ).min(1),
+    selectedOption: z.object({
+      name: z.string(),
+      durationMins: z.number(),
+      distanceKm: z.number(),
+      trafficLevel: z.string(),
+      floodRisk: z.string(),
+    }),
+  });
+
+  const handleExplainDecision = async (req: Request, res: Response) => {
+    const parsed = DecisionExplanationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid payload', details: parsed.error.format() });
+    }
+
+    const { options, selectedOption } = parsed.data;
+    const ai = getGeminiClient();
+
+    if (ai) {
+      try {
+        const systemPrompt = `You are the Explainable AI Decision Engine for BiteQuest (a culinary navigation & discovery platform in Vietnam).
+Your task is to generate a short, persuasive explanation (the "Why this?" card) for why BiteQuest recommended the chosen destination among the available options.
+
+Core Philosophy:
+- "Fastest ≠ Best": If the chosen option is slightly longer or further than an alternative to avoid heavy traffic or flood risks, emphasize that going with the fastest raw route isn't always the smart choice.
+- Tone: Vietnamese, calm, premium, intelligent, objective, and reassuring. Avoid robotic clichés like "As an AI..." or "Theo thuật toán của chúng tôi...".
+
+Output Format (strict JSON):
+{
+  "headline": "Short punchy Vietnamese headline (e.g., 'Nhanh nhất chưa chắc đã tốt nhất' or 'Đường đi thoáng và an toàn nhất')",
+  "bulletPoints": [
+    "Concrete reason 1 (e.g., 'Đường khá thoáng lúc 19:00')",
+    "Concrete reason 2 (e.g., 'Tránh được khu vực đang có nguy cơ ngập')",
+    "Concrete reason 3 (e.g., 'Chỉ đi xa hơn 3 phút so với quán gần nhất nhưng không lo kẹt xe')"
+  ],
+  "summary": "One concise reassuring sentence explaining why BiteQuest selected this place (e.g., 'BiteQuest chọn quán B vì nó phù hợp và an toàn hơn cho chuyến đi của bạn lúc này.')"
+}`;
+
+        const promptText = `Available Options:
+${JSON.stringify(options, null, 2)}
+
+Selected Best Option:
+${JSON.stringify(selectedOption, null, 2)}
+
+Provide the structured explanation in Vietnamese:`;
+
+        const geminiCall = ai.models.generateContent({
+          model: 'gemini-3.7-flash',
+          contents: [{ role: 'user', parts: [{ text: promptText }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                headline: { type: Type.STRING },
+                bulletPoints: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                summary: { type: Type.STRING },
+              },
+              required: ['headline', 'bulletPoints', 'summary'],
+            },
+            temperature: 0.2,
+            maxOutputTokens: 350,
+          },
+        });
+
+        const response = await withTimeout(geminiCall, 4000, null);
+
+        if (response && response.text) {
+          const jsonText = response.text.trim();
+          const parsedResult = JSON.parse(jsonText);
+          return res.json({
+            success: true,
+            explanation: {
+              headline: parsedResult.headline,
+              bulletPoints: parsedResult.bulletPoints || [],
+              summary: parsedResult.summary,
+            },
+            source: 'gemini-3.7-flash',
+          });
+        }
+      } catch (err: any) {
+        logger.warn({ event: 'GEMINI_DECISION_EXPLANATION_ERROR', error: err?.message });
+      }
+    }
+
+    // Local deterministic fallback logic
+    const isFloodSafe =
+      String(selectedOption.floodRisk).toLowerCase() === 'low' &&
+      options.some((o) => String(o.floodRisk).toLowerCase() === 'high');
+
+    const isTrafficAvoided =
+      String(selectedOption.trafficLevel).toLowerCase() === 'low' &&
+      options.some((o) => String(o.trafficLevel).toLowerCase() === 'high');
+
+    const minOpt = [...options].sort((a, b) => a.durationMins - b.durationMins)[0];
+    const isFastest = minOpt && minOpt.name === selectedOption.name;
+
+    let headline = `Đường đi lý tưởng đến ${selectedOption.name}`;
+    const bulletPoints: string[] = [];
+
+    if (!isFastest && (isFloodSafe || isTrafficAvoided)) {
+      headline = 'Nhanh nhất chưa chắc đã tốt nhất';
+      if (isTrafficAvoided) bulletPoints.push('Tuyến đường thông thoáng, tránh các nút giao đang ùn tắc');
+      if (isFloodSafe) bulletPoints.push('Tránh hoàn toàn các điểm ngập nước và vũng trũng cục bộ');
+      const diff = Math.max(1, Math.round(selectedOption.durationMins - (minOpt?.durationMins || selectedOption.durationMins)));
+      bulletPoints.push(`Chỉ đi xa hơn ${diff} phút so với quán gần nhất nhưng lộ trình an toàn hơn`);
+    } else {
+      bulletPoints.push(`Thời gian di chuyển ước tính: ~${selectedOption.durationMins} phút (${selectedOption.distanceKm} km)`);
+      if (String(selectedOption.trafficLevel).toLowerCase() === 'low') bulletPoints.push('Mật độ giao thông thông thoáng');
+      if (String(selectedOption.floodRisk).toLowerCase() === 'low') bulletPoints.push('Lộ trình khô ráo, không cảnh báo ngập');
+    }
+
+    return res.json({
+      success: true,
+      explanation: {
+        headline,
+        bulletPoints,
+        summary: `BiteQuest chọn ${selectedOption.name} vì nó phù hợp và an toàn hơn cho chuyến đi của bạn lúc này.`,
+      },
+      source: 'server-rule-fallback',
+    });
+  };
+
+  app.post('/api/ai/explain-decision', handleExplainDecision);
+
+
   // 12. BiteBot - Professional Culinary AI Concierge (Gemini 3.7 Flash)
   const ChatMessageSchema = z.object({
     role: z.enum(['user', 'assistant', 'system']),

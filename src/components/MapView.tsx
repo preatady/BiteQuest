@@ -31,6 +31,7 @@ import {
   computeQuickFilterChips,
   computeAllCategoryFilterCounts,
   matchVenueSearch,
+  deduplicateVenuesList,
 } from '../services/maps/categoryNormalizer';
 import { registerAllCategoryIcons, setupMapIconLifecycle } from '../services/maps/mapIconHelper';
 import { generateBiteOpportunities } from '../services/exploreEngine';
@@ -623,9 +624,9 @@ export const MapView: React.FC<MapViewProps> = ({
     };
   }, [referenceLocation]);
 
-  // Deduplicate live Geoapify POIs against BiteQuest verified / promoted places
+  // Deduplicate live Geoapify POIs against BiteQuest verified / promoted places and within itself
   const unpromotedNearbyPOIs = useMemo(() => {
-    return nearbyPOIs.filter((poi) => {
+    const filtered = nearbyPOIs.filter((poi) => {
       // 1. Exact ID or provider ID match
       const exactMatch = places.some(
         (p) =>
@@ -644,18 +645,21 @@ export const MapView: React.FC<MapViewProps> = ({
       });
       return !spatialMatch;
     });
+
+    return deduplicateVenuesList(filtered);
   }, [nearbyPOIs, places]);
 
   // All verified and community places loaded nationwide across 3 regions
   const localPromotedPlaces = useMemo(() => {
-    return places.filter((p) => {
+    const valid = places.filter((p) => {
       return typeof p.latitude === 'number' && typeof p.longitude === 'number';
     });
+    return deduplicateVenuesList(valid);
   }, [places]);
 
   // Dynamic filter chips derived strictly from all venues in current map area
   const allLoadedVenues = useMemo(() => {
-    return [...localPromotedPlaces, ...unpromotedNearbyPOIs];
+    return deduplicateVenuesList([...localPromotedPlaces, ...unpromotedNearbyPOIs]);
   }, [localPromotedPlaces, unpromotedNearbyPOIs]);
 
   // 24-Hour Hotness Snapshot Engine (Automatically recalculates every 24h based on ratings, press reviews, and check-ins)
@@ -1275,7 +1279,7 @@ export const MapView: React.FC<MapViewProps> = ({
   // Re-center button click: pans to user GPS if available, else re-prompts geolocation
   const handleMyLocationClick = () => {
     if (userLocation && hasRealLocation) {
-      handleFlyTo(userLocation.latitude, userLocation.longitude);
+      handleFlyTo(userLocation.latitude, userLocation.longitude, 16.2);
       triggerRippleExpansion(userLocation, {
         anchor: {
           latitude: userLocation.latitude,
@@ -1283,6 +1287,19 @@ export const MapView: React.FC<MapViewProps> = ({
           isRealUserLocation: true,
         },
       });
+
+      // Background GPS refinement
+      if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+            setUserLocation(coords);
+            setHasRealLocation(true);
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
+        );
+      }
     } else if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
       setIsLocating(true);
       navigator.geolocation.getCurrentPosition(
@@ -1291,7 +1308,8 @@ export const MapView: React.FC<MapViewProps> = ({
           setUserLocation(coords);
           setHasRealLocation(true);
           setIsLocating(false);
-          handleFlyTo(coords.latitude, coords.longitude);
+          setViewportCenter(coords);
+          handleFlyTo(coords.latitude, coords.longitude, 16.2);
           triggerRippleExpansion(coords, {
             anchor: {
               latitude: coords.latitude,
@@ -1303,12 +1321,12 @@ export const MapView: React.FC<MapViewProps> = ({
         (err) => {
           console.warn('Geolocation unavailable:', err);
           setIsLocating(false);
-          handleFlyTo(FALLBACK_CENTER.latitude, FALLBACK_CENTER.longitude);
+          handleFlyTo(FALLBACK_CENTER.latitude, FALLBACK_CENTER.longitude, 15.5);
         },
         { enableHighAccuracy: true, timeout: 8000 }
       );
     } else {
-      handleFlyTo(FALLBACK_CENTER.latitude, FALLBACK_CENTER.longitude);
+      handleFlyTo(FALLBACK_CENTER.latitude, FALLBACK_CENTER.longitude, 15.5);
     }
   };
 

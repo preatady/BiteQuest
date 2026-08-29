@@ -10,7 +10,6 @@ export type CanonicalCategory =
   | 'BAKERY_DESSERT'
   | 'BAR_BEER'
   | 'VEGETARIAN'
-  | 'SUPERMARKET'
   | 'OTHER_FOOD';
 
 export type ExploreFilterCategory = 'ALL' | CanonicalCategory;
@@ -173,17 +172,6 @@ export const CANONICAL_CATEGORIES: Record<CanonicalCategory, CategoryMetadata> =
     textColor: '#166534',
     borderColor: '#4ADE80',
   },
-  SUPERMARKET: {
-    id: 'SUPERMARKET',
-    label: 'Siêu thị & Tiện lợi',
-    shortLabel: 'Siêu thị',
-    iconName: 'icon-supermarket',
-    symbolGlyph: '🛒',
-    color: '#0D9488', // teal-600
-    bgColor: '#CCFBF1',
-    textColor: '#115E59',
-    borderColor: '#14B8A6',
-  },
   OTHER_FOOD: {
     id: 'OTHER_FOOD',
     label: 'Khác',
@@ -252,7 +240,7 @@ export function classifyVenue(venue: {
     return { category: 'VEGETARIAN', source: 'PROVIDER_EXPLICIT', confidence: 0.95 };
   }
   if (rawList.some((c) => c.includes('supermarket') || c.includes('convenience') || c.includes('grocery') || c.includes('greengrocer') || c.includes('market'))) {
-    return { category: 'SUPERMARKET', source: 'PROVIDER_EXPLICIT', confidence: 0.95 };
+    return { category: 'OTHER_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.95 };
   }
 
   // 2. Explicit Community Category (Priority 2)
@@ -260,14 +248,19 @@ export function classifyVenue(venue: {
     if (commCat === 'cafe' || commCat === 'coffee' || commCat === 'tea') return { category: 'CAFE_DRINK', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'pho') return { category: 'PHO', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'noodles' || commCat === 'noodle') return { category: 'NOODLE', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
-    if (commCat === 'hotpot' || commCat === 'lau') return { category: 'HOTPOT', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
+    if (commCat === 'hotpot' || commCat === 'lau' || commCat === 'hotpot_bbq' || commCat === 'bbq_hotpot') {
+      if (/(?:nuong|bbq|grill|yakiniku)/i.test(normName) && !/(?:lau|hotpot|nhung)/i.test(normName)) {
+        return { category: 'BBQ', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
+      }
+      return { category: 'HOTPOT', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
+    }
     if (commCat === 'bbq' || commCat === 'nuong') return { category: 'BBQ', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'rice' || commCat === 'com') return { category: 'RICE', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'fast_food' || commCat === 'burger_western') return { category: 'FAST_FOOD', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'dessert' || commCat === 'bakery') return { category: 'BAKERY_DESSERT', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'bar' || commCat === 'beer') return { category: 'BAR_BEER', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'vegetarian' || commCat === 'vegan') return { category: 'VEGETARIAN', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
-    if (commCat === 'supermarket' || commCat === 'grocery') return { category: 'SUPERMARKET', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
+    if (commCat === 'supermarket' || commCat === 'grocery') return { category: 'OTHER_FOOD', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'restaurant') return { category: 'RESTAURANT', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
   }
 
@@ -306,8 +299,8 @@ export function classifyVenue(venue: {
 
   // HOTPOT (Lẩu)
   if (
-    /(?:^|[\s,./\-_(])(lau|hotpot|kichi|manwah|haidilao|hutong|lau\s+ech|lau\s+nam|lau\s+thai|lau\s+rieu)(?:$|[\s,./\-_)])/i.test(normName) ||
-    /(?:^|[\s,./\-_(])(lẩu)(?:$|[\s,./\-_)])/i.test(name)
+    /(?:^|[\s,./\-_(])(lau|hotpot|kichi|kichi-kichi|manwah|haidilao|hutong|ashima|bo\s+nhung\s+dam|bo\s+nhung\s+giam|nhung\s+dam|nhung\s+giam|lau\s+ech|lau\s+nam|lau\s+thai|lau\s+rieu|lau\s+ga|lau\s+oc|lau\s+de|lau\s+bo|lau\s+chim|lau\s+vit|lau\s+hai\s+san|lau\s+bang\s+chuyen|lau\s+phan|lau\s+wang)(?:$|[\s,./\-_)])/i.test(normName) ||
+    /(?:^|[\s,./\-_(])(lẩu|bò nhúng dấm|bò nhúng giấm|lẩu ốc|lẩu ếch|lẩu nấm|lẩu riêu)(?:$|[\s,./\-_)])/i.test(name)
   ) {
     return { category: 'HOTPOT', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
@@ -360,12 +353,12 @@ export function classifyVenue(venue: {
     return { category: 'FAST_FOOD', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
 
-  // SUPERMARKET (Siêu thị & Bách hóa / Cửa hàng tiện lợi thực phẩm)
+  // SUPERMARKET / Convenience market mapped to OTHER_FOOD
   if (
     /(?:^|[\s,./\-_(])(sieu\s+thi|bach\s+hoa|bach\s+hoa\s+xanh|supermarket|grocery|convenience|winmart|vinmart|circle\s+k|gs25|7\s*eleven|seven\s+eleven|familymart|ministop|coopmart|co\.?op\s*mart|big\s+c|go!?|lotte\s+mart|aeon|aeon\s+mall|mega\s+market|brg\s+mart|fuji\s+mart|hapro\s+mart|cho\s+am\s+thuc|food\s+market)(?:$|[\s,./\-_)])/i.test(normName) ||
     /(?:^|[\s,./\-_(])(siêu thị|bách hóa|cửa hàng tiện lợi)(?:$|[\s,./\-_)])/i.test(name)
   ) {
-    return { category: 'SUPERMARKET', source: 'NAME_KEYWORD', confidence: 0.85 };
+    return { category: 'OTHER_FOOD', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
 
   // Raw category keywords as additional signals
@@ -383,7 +376,7 @@ export function classifyVenue(venue: {
   if (rawCat === 'burger_western' || rawCat === 'fast_food') return { category: 'FAST_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'bar' || rawCat === 'drinks' || rawCat === 'bar_beer' || rawCat === 'beer') return { category: 'BAR_BEER', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'vegetarian' || rawCat === 'vegan' || rawCat === 'chay') return { category: 'VEGETARIAN', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
-  if (rawCat === 'supermarket' || rawCat === 'grocery' || rawCat.includes('supermarket')) return { category: 'SUPERMARKET', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat === 'supermarket' || rawCat === 'grocery' || rawCat.includes('supermarket')) return { category: 'OTHER_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'restaurant') return { category: 'RESTAURANT', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'street_food' || rawCat === 'other_food') return { category: 'OTHER_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
 
@@ -448,22 +441,16 @@ export interface DynamicFilterChip {
   metadata: CategoryMetadata | typeof ALL_CATEGORY_META;
 }
 
-/** Canonical quick filter priority list representing high-intent food desires */
+/** Canonical quick filter priority list representing top 5 high-intent food desires */
 export const PREFERRED_QUICK_CATEGORY_PRIORITY: CanonicalCategory[] = [
   'CAFE_DRINK',
   'NOODLE',
   'PHO',
   'HOTPOT',
   'BBQ',
-  'RICE',
-  'SUPERMARKET',
-  'FAST_FOOD',
-  'BAKERY_DESSERT',
-  'BAR_BEER',
-  'VEGETARIAN',
 ];
 
-/** Full canonical order for complete filter sheet */
+/** Full canonical order for complete filter sheet (12 canonical categories) */
 export const FULL_FILTER_CATEGORY_ORDER: CanonicalCategory[] = [
   'CAFE_DRINK',
   'PHO',
@@ -471,7 +458,6 @@ export const FULL_FILTER_CATEGORY_ORDER: CanonicalCategory[] = [
   'HOTPOT',
   'BBQ',
   'RICE',
-  'SUPERMARKET',
   'FAST_FOOD',
   'BAKERY_DESSERT',
   'BAR_BEER',
@@ -508,7 +494,6 @@ export function computeDynamicFilterChips(
     BAKERY_DESSERT: 0,
     BAR_BEER: 0,
     VEGETARIAN: 0,
-    SUPERMARKET: 0,
     OTHER_FOOD: 0,
   };
 
@@ -573,7 +558,6 @@ export function computeQuickFilterChips(
     BAKERY_DESSERT: 0,
     BAR_BEER: 0,
     VEGETARIAN: 0,
-    SUPERMARKET: 0,
     OTHER_FOOD: 0,
   };
 
@@ -624,7 +608,7 @@ export function computeQuickFilterChips(
 }
 
 /**
- * Computes category counts for all 13 canonical categories for the Full Filter Sheet.
+ * Computes category counts for all 12 canonical categories for the Full Filter Sheet.
  */
 export function computeAllCategoryFilterCounts(
   venues: Array<{
@@ -648,7 +632,6 @@ export function computeAllCategoryFilterCounts(
     BAKERY_DESSERT: 0,
     BAR_BEER: 0,
     VEGETARIAN: 0,
-    SUPERMARKET: 0,
     OTHER_FOOD: 0,
   };
 
@@ -679,7 +662,16 @@ export function computeAllCategoryFilterCounts(
 }
 
 /**
+ * Checks if a string contains explicit Vietnamese diacritics (tones, accents, đ).
+ */
+export function hasVietnameseDiacritics(str: string): boolean {
+  if (!str) return false;
+  return /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]/.test(str.toLowerCase());
+}
+
+/**
  * Determines whether a venue matches a user search query across name, diacritic-tolerant keywords, address, and category.
+ * Intelligent diacritic awareness prevents false positives like "Phố" (Street) matching "Phở" (Noodle soup).
  */
 export function matchVenueSearch(
   venue: {
@@ -687,6 +679,7 @@ export function matchVenueSearch(
     category?: string;
     categoryLabel?: string;
     address?: string;
+    district?: string;
     categories?: string[];
     communityCategory?: string;
   },
@@ -695,6 +688,7 @@ export function matchVenueSearch(
   if (!query || !query.trim()) return true;
   const qRaw = query.trim().toLowerCase();
   const qNorm = normalizeVietnameseText(qRaw);
+  const queryHasDiacritics = hasVietnameseDiacritics(qRaw);
 
   const venueName = (venue.name || '').trim();
   const normName = normalizeVietnameseText(venueName);
@@ -702,25 +696,24 @@ export function matchVenueSearch(
   const normCatLabel = normalizeVietnameseText(venueCatLabel);
   const venueAddress = (venue.address || '').trim();
   const normAddress = normalizeVietnameseText(venueAddress);
+  const venueDistrict = (venue.district || '').trim();
+  const normDistrict = normalizeVietnameseText(venueDistrict);
 
-  // 1. Direct or normalized name match
-  if (venueName.toLowerCase().includes(qRaw) || normName.includes(qNorm)) {
-    return true;
-  }
-
-  // 2. Direct or normalized address match
-  if (venueAddress.toLowerCase().includes(qRaw) || normAddress.includes(qNorm)) {
-    return true;
-  }
-
-  // 3. Category label match
-  if (venueCatLabel.toLowerCase().includes(qRaw) || normCatLabel.includes(qNorm)) {
-    return true;
-  }
-
-  // 4. Canonical category metadata match
   const classification = classifyVenue(venue);
   const meta = CANONICAL_CATEGORIES[classification.category];
+
+  // 1. Direct raw case-insensitive match (highest fidelity for accented inputs)
+  if (venueName.toLowerCase().includes(qRaw)) {
+    return true;
+  }
+  if (venueAddress.toLowerCase().includes(qRaw) || venueDistrict.toLowerCase().includes(qRaw)) {
+    return true;
+  }
+  if (venueCatLabel.toLowerCase().includes(qRaw)) {
+    return true;
+  }
+
+  // 2. Canonical category metadata match
   if (meta) {
     if (
       meta.label.toLowerCase().includes(qRaw) ||
@@ -732,39 +725,233 @@ export function matchVenueSearch(
     }
   }
 
-  // 5. Common Vietnamese food keyword equivalents
-  if (['cafe', 'coffee', 'ca phe', 'caphe', 'tra', 'tea'].includes(qNorm)) {
-    if (classification.category === 'CAFE_DRINK') return true;
+  // 3. Common Vietnamese culinary keyword to category mappings (both exact and substring/token matches)
+  const foodCategoryKeywords: Record<string, CanonicalCategory[]> = {
+    'pho': ['PHO'],
+    'pho bo': ['PHO'],
+    'pho ga': ['PHO'],
+    'pho cuon': ['PHO'],
+    'bun': ['NOODLE'],
+    'bun cha': ['NOODLE'],
+    'bun dau': ['NOODLE'],
+    'bun bo': ['NOODLE'],
+    'bun rieu': ['NOODLE'],
+    'bun ca': ['NOODLE'],
+    'mi': ['NOODLE'],
+    'my': ['NOODLE'],
+    'noodle': ['NOODLE'],
+    'ramen': ['NOODLE'],
+    'hu tieu': ['NOODLE'],
+    'banh da': ['NOODLE'],
+    'mien': ['NOODLE'],
+    'cafe': ['CAFE_DRINK'],
+    'coffee': ['CAFE_DRINK'],
+    'ca phe': ['CAFE_DRINK'],
+    'caphe': ['CAFE_DRINK'],
+    'ca phe trung': ['CAFE_DRINK'],
+    'tra': ['CAFE_DRINK'],
+    'tea': ['CAFE_DRINK'],
+    'tra sua': ['CAFE_DRINK'],
+    'tra quan': ['CAFE_DRINK'],
+    'lau': ['HOTPOT'],
+    'hotpot': ['HOTPOT'],
+    'nuong': ['BBQ'],
+    'bbq': ['BBQ'],
+    'grill': ['BBQ'],
+    'barbecue': ['BBQ'],
+    'com': ['RICE'],
+    'com tam': ['RICE'],
+    'com ga': ['RICE'],
+    'xoi': ['RICE'],
+    'rice': ['RICE'],
+    'fast food': ['FAST_FOOD'],
+    'burger': ['FAST_FOOD'],
+    'pizza': ['FAST_FOOD'],
+    'ga ran': ['FAST_FOOD'],
+    'banh mi': ['FAST_FOOD', 'BAKERY_DESSERT'],
+    'banh my': ['FAST_FOOD', 'BAKERY_DESSERT'],
+    'banh': ['BAKERY_DESSERT'],
+    'che': ['BAKERY_DESSERT'],
+    'kem': ['BAKERY_DESSERT'],
+    'dessert': ['BAKERY_DESSERT'],
+    'bakery': ['BAKERY_DESSERT'],
+    'cake': ['BAKERY_DESSERT'],
+    'bar': ['BAR_BEER'],
+    'beer': ['BAR_BEER'],
+    'bia': ['BAR_BEER'],
+    'pub': ['BAR_BEER'],
+    'chay': ['VEGETARIAN'],
+    'vegan': ['VEGETARIAN'],
+    'vegetarian': ['VEGETARIAN'],
+  };
+
+  const matchingCats = foodCategoryKeywords[qNorm];
+  if (matchingCats && matchingCats.includes(classification.category)) {
+    return true;
   }
-  if (['pho', 'pho bo', 'pho ga', 'pho cuon'].includes(qNorm)) {
-    if (classification.category === 'PHO') return true;
+
+  // Also check if any key culinary phrase is contained within a compound query
+  for (const [kw, cats] of Object.entries(foodCategoryKeywords)) {
+    if (kw.length >= 3 && qNorm.includes(kw) && cats.includes(classification.category)) {
+      return true;
+    }
   }
-  if (['bun', 'mi', 'my', 'noodle', 'ramen', 'hu tieu', 'banh da', 'mien'].includes(qNorm)) {
-    if (classification.category === 'NOODLE') return true;
-  }
-  if (['lau', 'hotpot'].includes(qNorm)) {
-    if (classification.category === 'HOTPOT') return true;
-  }
-  if (['nuong', 'bbq', 'grill', 'barbecue'].includes(qNorm)) {
-    if (classification.category === 'BBQ') return true;
-  }
-  if (['com', 'xoi', 'rice'].includes(qNorm)) {
-    if (classification.category === 'RICE') return true;
-  }
-  if (['fast food', 'burger', 'pizza', 'ga ran'].includes(qNorm)) {
-    if (classification.category === 'FAST_FOOD') return true;
-  }
-  if (['banh', 'che', 'kem', 'dessert', 'bakery', 'cake'].includes(qNorm)) {
-    if (classification.category === 'BAKERY_DESSERT') return true;
-  }
-  if (['bar', 'beer', 'bia', 'pub'].includes(qNorm)) {
-    if (classification.category === 'BAR_BEER') return true;
-  }
-  if (['chay', 'vegan', 'vegetarian'].includes(qNorm)) {
-    if (classification.category === 'VEGETARIAN') return true;
+
+  // 4. Normalized search with Diacritic Clash Protection:
+  // If the user typed explicit accents (e.g. "phở"), DO NOT match words with conflicting accents (e.g. "phố").
+  if (!queryHasDiacritics) {
+    // Special guard: single-word "pho" query should NOT match the word "Phố" (Street) in non-PHO venues
+    if (qNorm === 'pho' && classification.category !== 'PHO') {
+      const tokens = venueName.toLowerCase().split(/[\s,.-]+/);
+      const hasRealPhoToken = tokens.some((t) => t === 'phở' || t === 'pho');
+      if (!hasRealPhoToken) {
+        return false;
+      }
+    }
+
+    // Unaccented normalized match
+    if (normName.includes(qNorm)) {
+      return true;
+    }
+    if (normAddress.includes(qNorm) || normDistrict.includes(qNorm)) {
+      return true;
+    }
+    if (normCatLabel.includes(qNorm)) {
+      return true;
+    }
+  } else {
+    // Accented query: verify word/token compatibility
+    if (normName.includes(qNorm)) {
+      // Check if the matched slice in venueName has conflicting diacritics
+      const venueTokens = venueName.toLowerCase().split(/[\s,.-]+/);
+      const qTokens = qRaw.split(/[\s,.-]+/);
+      const allTokensMatched = qTokens.every((qTok) => {
+        const qTokNorm = normalizeVietnameseText(qTok);
+        return venueTokens.some((vTok) => {
+          if (vTok === qTok) return true;
+          const vTokNorm = normalizeVietnameseText(vTok);
+          if (vTokNorm === qTokNorm) {
+            // If both have diacritics, they must match identically
+            if (hasVietnameseDiacritics(vTok) && hasVietnameseDiacritics(qTok)) {
+              return vTok === qTok;
+            }
+            return true;
+          }
+          return vTokNorm.includes(qTokNorm);
+        });
+      });
+
+      if (allTokensMatched) {
+        return true;
+      }
+    }
   }
 
   return false;
+}
+
+/**
+ * Calculates search relevance score (0..100) for ranking search candidates.
+ */
+export function getVenueSearchRelevance(
+  venue: {
+    id?: string;
+    name?: string;
+    category?: string;
+    categoryLabel?: string;
+    address?: string;
+    district?: string;
+    categories?: string[];
+    isPromoted?: boolean;
+    rating?: number;
+  },
+  query: string,
+  distanceMeters?: number
+): number {
+  if (!query || !query.trim()) return 0;
+  const qRaw = query.trim().toLowerCase();
+  const qNorm = normalizeVietnameseText(qRaw);
+
+  const venueName = (venue.name || '').trim();
+  const venueNameLower = venueName.toLowerCase();
+  const normName = normalizeVietnameseText(venueName);
+
+  if (!matchVenueSearch(venue, query)) {
+    return 0;
+  }
+
+  let score = 50;
+
+  // Exact name match
+  if (venueNameLower === qRaw || normName === qNorm) {
+    score = 100;
+  } else if (venueNameLower.startsWith(qRaw) || normName.startsWith(qNorm)) {
+    score = 90;
+  } else if (venueNameLower.includes(qRaw)) {
+    score = 80;
+  } else if (normName.includes(qNorm)) {
+    score = 70;
+  }
+
+  // Category match bonus
+  const classification = classifyVenue(venue);
+  if (['pho', 'pho bo', 'pho ga'].includes(qNorm) && classification.category === 'PHO') {
+    score = Math.max(score, 85);
+  } else if (['cafe', 'coffee', 'ca phe'].includes(qNorm) && classification.category === 'CAFE_DRINK') {
+    score = Math.max(score, 85);
+  } else if (['bun', 'bun cha', 'bun dau', 'mi'].includes(qNorm) && classification.category === 'NOODLE') {
+    score = Math.max(score, 85);
+  }
+
+  // Quality & Verified bonus
+  if (venue.isPromoted) score += 5;
+  if (venue.rating && venue.rating >= 4.5) score += 3;
+
+  // Proximity bonus (up to +10 points for closest venues)
+  if (typeof distanceMeters === 'number') {
+    if (distanceMeters < 1000) {
+      score += 10;
+    } else if (distanceMeters < 3000) {
+      score += 6;
+    } else if (distanceMeters < 6000) {
+      score += 3;
+    }
+  }
+
+  return score;
+}
+
+/**
+ * Deduplicates an array of venues by ID and spatial grid proximity (~30m).
+ */
+export function deduplicateVenuesList<T extends { id?: string; name?: string; latitude: number; longitude: number }>(
+  venues: T[]
+): T[] {
+  const seenIds = new Set<string>();
+  const seenGeoKeys = new Set<string>();
+  const results: T[] = [];
+
+  for (const v of venues) {
+    if (!v || typeof v.latitude !== 'number' || typeof v.longitude !== 'number') continue;
+
+    if (v.id) {
+      if (seenIds.has(v.id)) continue;
+      seenIds.add(v.id);
+    }
+
+    const normName = normalizeVietnameseText(v.name || '');
+    const latGrid = Math.round(v.latitude * 3000);
+    const lngGrid = Math.round(v.longitude * 3000);
+    const geoKey = `${normName}_${latGrid}_${lngGrid}`;
+
+    if (seenGeoKeys.has(geoKey)) {
+      continue;
+    }
+    seenGeoKeys.add(geoKey);
+    results.push(v);
+  }
+
+  return results;
 }
 
 /**

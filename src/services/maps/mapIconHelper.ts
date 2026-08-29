@@ -16,7 +16,7 @@ export type IconVariant = 'unvisited' | 'visited' | 'selected' | 'normal' | 'hot
  */
 export function resolveCanonicalCategoryFromIconId(
   iconId: string
-): { category: CanonicalCategory; variant: IconVariant } | null {
+): { category: CanonicalCategory; isSelected: boolean; variant: IconVariant } | null {
   if (!iconId || typeof iconId !== 'string') {
     return null;
   }
@@ -48,10 +48,12 @@ export function resolveCanonicalCategoryFromIconId(
   }
 
   const upperKey = raw.toUpperCase();
+  const isSelected = variant === 'selected';
 
   if (upperKey in CANONICAL_CATEGORIES) {
     return {
       category: upperKey as CanonicalCategory,
+      isSelected,
       variant,
     };
   }
@@ -59,6 +61,7 @@ export function resolveCanonicalCategoryFromIconId(
   // Fallback category for any unknown icon-* or cat_* request to prevent missing image drops
   return {
     category: 'OTHER_FOOD',
+    isSelected,
     variant,
   };
 }
@@ -124,7 +127,6 @@ export function createCategoryIconCanvas(
           BAKERY_DESSERT: '#72435B',
           BAR_BEER: '#55456A',
           VEGETARIAN: '#3E5E40',
-          SUPERMARKET: '#285A56',
           OTHER_FOOD: '#57534E',
         };
 

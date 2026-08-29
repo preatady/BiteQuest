@@ -33,34 +33,42 @@ describe('MapIconHelper', () => {
     expect(resolveCanonicalCategoryFromIconId('icon-fast_food')).toEqual({
       category: 'FAST_FOOD',
       isSelected: false,
+      variant: 'normal',
     });
     expect(resolveCanonicalCategoryFromIconId('cat_fast_food')).toEqual({
       category: 'FAST_FOOD',
       isSelected: false,
+      variant: 'normal',
     });
     expect(resolveCanonicalCategoryFromIconId('icon-pho-selected')).toEqual({
       category: 'PHO',
       isSelected: true,
+      variant: 'selected',
     });
     expect(resolveCanonicalCategoryFromIconId('cat_pho_selected')).toEqual({
       category: 'PHO',
       isSelected: true,
+      variant: 'selected',
     });
     expect(resolveCanonicalCategoryFromIconId('icon-cafe_drink')).toEqual({
       category: 'CAFE_DRINK',
       isSelected: false,
+      variant: 'normal',
     });
     expect(resolveCanonicalCategoryFromIconId('cat_cafe_drink')).toEqual({
       category: 'CAFE_DRINK',
       isSelected: false,
+      variant: 'normal',
     });
     expect(resolveCanonicalCategoryFromIconId('icon-unknown_snack')).toEqual({
       category: 'OTHER_FOOD',
       isSelected: false,
+      variant: 'normal',
     });
     expect(resolveCanonicalCategoryFromIconId('cat_unknown_snack')).toEqual({
       category: 'OTHER_FOOD',
       isSelected: false,
+      variant: 'normal',
     });
     expect(resolveCanonicalCategoryFromIconId('not-an-icon')).toBeNull();
   });
