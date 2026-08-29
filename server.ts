@@ -478,7 +478,7 @@ async function startServer() {
     const lat = parseFloat(req.query.lat as string) || 21.0285;
     const lng = parseFloat(req.query.lng as string) || 105.7958;
     const radius = parseInt(req.query.radius as string, 10) || 2000;
-    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 150);
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 400);
 
     try {
       const anchorLat = req.query.anchorLat ? parseFloat(req.query.anchorLat as string) : undefined;

@@ -246,12 +246,27 @@ export const OpportunityCarousel: React.FC<OpportunityCarouselProps> = ({
 
               {/* WHAT: Place Name & Category */}
               <div className="mb-2">
-                <h4 className="font-heading text-sm font-bold text-[#2D2926] line-clamp-1">
-                  {place.name}
-                </h4>
-                <p className="text-[11px] text-[#594139]/80 font-medium truncate">
-                  {place.categoryLabel || place.district}
-                </p>
+                <div className="flex items-center justify-between gap-1">
+                  <h4 className="font-heading text-sm font-bold text-[#2D2926] line-clamp-1">
+                    {place.name}
+                  </h4>
+                  {(place as any).activeDeal && (
+                    <span className="bg-rose-50 border border-rose-300 text-rose-700 font-heading text-[9px] font-extrabold px-1.5 py-0.5 rounded-md shrink-0 flex items-center gap-0.5 shadow-2xs">
+                      <span>🎟️</span>
+                      <span>{(place as any).activeDeal.discountLabel}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-1 text-[11px] text-[#594139]/80 font-medium">
+                  <p className="truncate">
+                    {place.categoryLabel || place.district}
+                  </p>
+                  {(place as any).activeDeal?.code && (
+                    <span className="font-mono text-[9.5px] font-bold text-rose-700 bg-rose-50/80 px-1 rounded border border-rose-200 shrink-0">
+                      {(place as any).activeDeal.code}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* WHY: Truthful Reason to Go */}

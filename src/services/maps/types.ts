@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DealVoucher } from '../../types';
 
 export interface LatLng {
   latitude: number;
@@ -41,6 +42,8 @@ export interface UnifiedPlace {
   communityVerified?: boolean;
   firstDiscovererId?: string;
   firstDiscovererName?: string;
+  activeDeal?: DealVoucher;
+  deals?: DealVoucher[];
 }
 
 export interface NearbySearchOptions {

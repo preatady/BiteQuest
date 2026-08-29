@@ -15,7 +15,7 @@ import { INITIAL_PLACES } from '../../data/seedData';
 import { classifyVenue, CANONICAL_CATEGORIES } from './categoryNormalizer';
 
 // Constants
-export const REGISTRY_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours TTL for venue sync
+export const REGISTRY_CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours TTL for venue sync & delta revalidation
 export const SPATIAL_GRID_SIZE_DEG = 0.01; // ~1.1km grid cell step
 export const DEDUP_DISTANCE_METERS = 25; // 25m spatial proximity threshold for name-matched dedup
 

@@ -245,13 +245,30 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
     const effectiveRadius = Math.min(Math.max(radiusMeters, 2000), 6500);
     const osmPlaces: UnifiedPlace[] = [];
 
-    // TIER 1: Rapid Photon OSM POI Discovery (Ultra-fast ~100ms response)
-    const photonQueries = ['cafe', 'quan an', 'nha hang', 'banh mi', 'pho'];
+    // TIER 1: Rapid Photon OSM POI Discovery (Ultra-fast ~100ms response across all food & drink genres)
+    const photonQueries = [
+      'cafe',
+      'coffee',
+      'quan an',
+      'nha hang',
+      'banh mi',
+      'pho',
+      'bun',
+      'lau',
+      'nuong',
+      'tra sua',
+      'an vat',
+      'com',
+      'pizza',
+      'sushi',
+      'che',
+      'bakery',
+    ];
     try {
       const photonPromises = photonQueries.map(async (q) => {
         try {
-          const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${latitude}&lon=${longitude}&limit=25`;
-          const pRes = await fetch(photonUrl, { signal: AbortSignal.timeout(2800) });
+          const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${latitude}&lon=${longitude}&limit=50`;
+          const pRes = await fetch(photonUrl, { signal: AbortSignal.timeout(3000) });
           if (!pRes.ok) return [];
           const pData = await pRes.json();
           if (!Array.isArray(pData?.features)) return [];
@@ -274,6 +291,42 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
 
           const osmKey = p.osm_key || 'amenity';
           const osmVal = p.osm_value || 'restaurant';
+
+          // Reject non-food amenities (schools, hospitals, banks, etc.)
+          const nonFoodOsmValues = [
+            'school',
+            'kindergarten',
+            'university',
+            'college',
+            'hospital',
+            'clinic',
+            'pharmacy',
+            'bank',
+            'police',
+            'place_of_worship',
+            'fuel',
+            'parking',
+            'post_office',
+            'townhall',
+            'courthouse',
+            'fire_station',
+            'stadium',
+            'sports_centre',
+            'pitch',
+            'cemetery',
+          ];
+          if (nonFoodOsmValues.includes(osmVal) || nonFoodOsmValues.includes(osmKey)) continue;
+
+          // Reject non-food names
+          if (
+            /(?:trường\s+(?:tiểu\s+học|trung\s+học|thcs|thpt|đại\s+học|cao\s+đẳng|mầm\s+non|mẫu\s+giáo)|thpt|thcs|bệnh\s+viện|phòng\s+khám|trạm\s+y\s+tế|ủy\s+ban|ubnd|công\s+an|ngân\s+hàng|trụ\s+sở|chùa\s+|đền\s+|đình\s+|nhà\s+thờ\s+|nghĩa\s+trang|sân\s+bóng|sân\s+vận\s+động|bến\s+xe|nhà\s+ga)/i.test(
+              p.name
+            ) &&
+            !/(?:căng\s+tin|quán|cà\s+phê|cafe|cơm|bún|phở|bánh)/i.test(p.name)
+          ) {
+            continue;
+          }
+
           const classification = classifyVenue({
             name: p.name,
             category: osmVal,

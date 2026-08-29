@@ -1,4 +1,4 @@
-export type MapMode = 'street' | 'satellite';
+export type MapMode = 'street' | 'satellite' | 'fog_of_war';
 
 export interface MapProviderConfig {
   styleUrl: any;
@@ -80,6 +80,9 @@ export function getMapStyleForMode(mode: MapMode): any {
       return getEsriImageryStyleUrl(token);
     }
     return ESRI_WORLD_IMAGERY_STYLE;
+  }
+  if (mode === 'fog_of_war') {
+    return OPENFREEMAP_LIBERTY_STYLE;
   }
   return OPENFREEMAP_LIBERTY_STYLE;
 }

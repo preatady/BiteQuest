@@ -101,3 +101,80 @@ h1, h2, h3, h4, .font-heading {
   height: 100% !important;
 }
 
+@keyframes radar-sweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.radar-sweep-beam {
+  animation: radar-sweep 4s linear infinite;
+}
+
+@keyframes ethereal-pulse {
+  0%, 100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.ethereal-glow-pulse {
+  animation: ethereal-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes flame-wiggle {
+  0%, 100% {
+    transform: rotate(-3deg) scale(1);
+  }
+  50% {
+    transform: rotate(3deg) scale(1.1);
+  }
+}
+
+.flame-wiggle {
+  animation: flame-wiggle 1.2s ease-in-out infinite;
+}
+
+@keyframes chest-wobble {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(-8deg) scale(1.06);
+  }
+  75% {
+    transform: rotate(8deg) scale(1.06);
+  }
+}
+
+.chest-wobble {
+  animation: chest-wobble 2s ease-in-out infinite;
+}
+
+@keyframes live-dot-ping {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.live-dot-pulse {
+  animation: live-dot-ping 1.8s infinite;
+}
+
+

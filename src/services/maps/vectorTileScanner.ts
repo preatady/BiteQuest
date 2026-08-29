@@ -18,8 +18,18 @@ export function isFoodOrVenueFeature(properties: any, layerId?: string): boolean
 
   if (!rawName || rawName.length < 2) return false;
 
-  // Ignore pure road names, numbers or administrative boundary names
+  // Ignore pure road names, numbers, administrative boundaries, or public civil infrastructure (schools, hospitals, etc.)
   if (/^(đường|phố|ngõ|ngách|quốc lộ|ql|tỉnh lộ|đt|tòa nhà|khu đô thị|ct\d+|km\d+)/i.test(rawName)) {
+    return false;
+  }
+
+  // Strictly exclude non-food facilities like schools, hospitals, offices, temples, sports facilities
+  if (
+    /(?:trường\s+(?:tiểu\s+học|trung\s+học|thcs|thpt|đại\s+học|cao\s+đẳng|mầm\s+non|mẫu\s+giáo)|thpt|thcs|bệnh\s+viện|phòng\s+khám|trạm\s+y\s+tế|ủy\s+ban|ubnd|công\s+an|ngân\s+hàng|trụ\s+sở|chùa\s+|đền\s+|đình\s+|nhà\s+thờ\s+|nghĩa\s+trang|sân\s+bóng|sân\s+vận\s+động|bến\s+xe|nhà\s+ga)/i.test(
+      rawName
+    ) &&
+    !/(?:căng\s+tin|quán|cà\s+phê|cafe|cơm|bún|phở|bánh)/i.test(rawName)
+  ) {
     return false;
   }
 
@@ -31,9 +41,39 @@ export function isFoodOrVenueFeature(properties: any, layerId?: string): boolean
     properties.cuisine ||
     properties.category ||
     properties.type ||
+    properties.maki ||
+    properties.kind ||
     layerId ||
     ''
   ).toLowerCase();
+
+  // Exclude non-food amenity / class types from OSM & Vector tiles
+  const nonFoodClasses = [
+    'school',
+    'kindergarten',
+    'university',
+    'college',
+    'hospital',
+    'clinic',
+    'pharmacy',
+    'bank',
+    'police',
+    'place_of_worship',
+    'fuel',
+    'parking',
+    'post_office',
+    'townhall',
+    'courthouse',
+    'fire_station',
+    'stadium',
+    'sports_centre',
+    'pitch',
+    'cemetery',
+  ];
+
+  if (nonFoodClasses.some((c) => pClass.includes(c))) {
+    return false;
+  }
 
   const foodClassKeywords = [
     'cafe',
@@ -53,68 +93,108 @@ export function isFoodOrVenueFeature(properties: any, layerId?: string): boolean
     'caterer',
     'confectionery',
     'pastry',
-    'supermarket',
-    'convenience',
-    'shop',
-    'commercial',
-    'poi',
+    'eatery',
+    'meal_takeaway',
+    'meal_delivery',
   ];
 
   if (foodClassKeywords.some((k) => pClass.includes(k))) {
     return true;
   }
 
-  // Name keyword heuristics for Vietnamese food & drink venues
+  // Name keyword heuristics for Vietnamese food & drink venues (accented and unaccented)
   const vietnameseFoodNameKeywords = [
     'coffee',
     'cafe',
+    'café',
     'cà phê',
+    'ca phe',
     'quán',
+    'quan',
     'nhà hàng',
+    'nha hang',
     'tiệm',
+    'tiem',
     'bánh',
+    'banh',
     'phở',
+    'pho',
     'bún',
+    'bun',
     'miến',
+    'mien',
     'mì',
+    'mi',
     'hủ tiếu',
+    'hu tieu',
     'bánh mì',
+    'banh mi',
     'cơm',
+    'com',
     'cơm chay',
     'cơm tấm',
     'cơm niêu',
     'chay',
     'thực dưỡng',
     'lẩu',
+    'lau',
     'nướng',
+    'nuong',
     'bbq',
     'trà sữa',
+    'tra sua',
+    'trà chanh',
+    'tra chanh',
     'trà',
+    'tra',
     'chè',
+    'che',
     'cháo',
+    'chao',
     'xôi',
+    'xoi',
     'vịt',
+    'vit',
     'gà',
+    'ga',
     'dê',
+    'de',
     'bò',
+    'bo',
     'hải sản',
+    'hai san',
     'nước mía',
     'sinh tố',
     'bò kho',
     'nem',
     'chả',
+    'cha',
     'ốc',
+    'oc',
     'bia',
+    'beer',
     'nhậu',
     'dimsum',
     'pizza',
     'burger',
     'sushi',
     'steak',
+    'doner',
+    'kebab',
+    'sữa chua',
+    'kem',
+    'matcha',
+    'cacao',
   ];
 
   const lowerName = rawName.toLowerCase();
-  if (vietnameseFoodNameKeywords.some((kw) => lowerName.includes(kw))) {
+  const unaccented = lowerName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  if (
+    vietnameseFoodNameKeywords.some(
+      (kw) => lowerName.includes(kw) || unaccented.includes(kw)
+    )
+  ) {
     return true;
   }
 

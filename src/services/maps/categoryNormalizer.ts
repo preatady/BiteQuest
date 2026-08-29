@@ -266,12 +266,18 @@ export function classifyVenue(venue: {
     return { category: 'VEGETARIAN', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
 
-  // PHO (Distinct from general noodle)
-  if (
-    /(?:^|[\s,./\-_(])(pho|pho\s+bo|pho\s+ga|pho\s+cuon|pho\s+tron|pho\s+thin|pho\s+10|pho\s+ly\s+quoc\s+su|pho\s+bat\s+dan|pho\s+gia\s+truyen)(?:$|[\s,./\-_)])/i.test(normName) ||
-    /(?:^|[\s,./\-_(])(phở)(?:$|[\s,./\-_)])/i.test(name)
-  ) {
-    return { category: 'PHO', source: 'NAME_KEYWORD', confidence: 0.85 };
+  // PHO (Distinct from general noodle - strictly guard against 'phổ thông', 'phố cổ', 'thành phố')
+  const isExcludedFromPho =
+    /(?:trung\s+hoc\s+)?pho\s+thong|thpt|thcs|thanh\s+pho|pho\s+co|pho\s+di\s+bo|pho\s+sach|pho\s+dem|pho\s+bien|pho\s+quang|khu\s+pho|duong\s+pho|phong\s+kham/i.test(normName);
+
+  if (!isExcludedFromPho) {
+    if (
+      /(?:^|[\s,./\-_(])(phở|quán phở|tiệm phở)(?:$|[\s,./\-_)])/i.test(name) ||
+      /(?:^|[\s,./\-_(])(pho\s+bo|pho\s+ga|pho\s+cuon|pho\s+tron|pho\s+thin|pho\s+10|pho\s+ly\s+quoc\s+su|pho\s+bat\s+dan|pho\s+gia\s+truyen|pho\s+tai|pho\s+nam|pho\s+sot\s+vang|pho\s+xao|quan\s+pho|tiem\s+pho|pho\s+viet|pho\s+ha\s+noi|pho\s+nam\s+dinh)(?:$|[\s,./\-_)])/i.test(normName) ||
+      (/(?:^|[\s,./\-_(])pho(?:$|[\s,./\-_)])/i.test(normName) && /(?:an|quan|tiem|dac\s+san|am\s+thuc|food|mon)/i.test(normName))
+    ) {
+      return { category: 'PHO', source: 'NAME_KEYWORD', confidence: 0.85 };
+    }
   }
 
   // NOODLE (Bún / Mì / Hủ tiếu / Miến / Bánh đa / Bánh canh / Ramen / Udon)

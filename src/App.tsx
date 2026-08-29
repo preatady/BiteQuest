@@ -10,6 +10,7 @@ import {
   createDefaultPassport,
   INITIAL_ACHIEVEMENTS,
 } from './data/seedData';
+import { getInitialTriRegionPlaces } from './data/triRegionVenues';
 import { auth, googleProvider } from './firebase';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import {
@@ -48,7 +49,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
   const isSigningInRef = useRef<boolean>(false);
-  const [places, setPlaces] = useState<Place[]>(INITIAL_PLACES);
+  const [places, setPlaces] = useState<Place[]>(() => [...INITIAL_PLACES, ...getInitialTriRegionPlaces()]);
   const [feedBites, setFeedBites] = useState<BiteCheckin[]>([]);
   const [passport, setPassport] = useState<DistrictPassport>(EMPTY_PASSPORT_CAU_GIAY);
   const [achievements, setAchievements] = useState<AchievementBadge[]>(() =>

@@ -5,11 +5,12 @@ import { CanonicalCategory, CANONICAL_CATEGORIES, normalizeCategory } from './ca
  * E.g., 'icon-pho' -> { category: 'PHO', isSelected: false }
  *       'icon-cafe_drink-selected' -> { category: 'CAFE_DRINK', isSelected: true }
  */
-export type IconVariant = 'unvisited' | 'visited' | 'selected' | 'normal';
+export type IconVariant = 'unvisited' | 'visited' | 'selected' | 'normal' | 'hot';
 
 /**
  * Parses an icon identifier into a canonical category and variant.
  * E.g., 'icon-pho-unvisited' -> { category: 'PHO', variant: 'unvisited' }
+ *       'icon-pho-hot' -> { category: 'PHO', variant: 'hot' }
  *       'icon-pho-visited' -> { category: 'PHO', variant: 'visited' }
  *       'icon-cafe_drink-selected' -> { category: 'CAFE_DRINK', variant: 'selected' }
  */
@@ -35,6 +36,9 @@ export function resolveCanonicalCategoryFromIconId(
   if (raw.endsWith('-selected') || raw.endsWith('_selected')) {
     variant = 'selected';
     raw = raw.replace(/[-_]selected$/, '');
+  } else if (raw.endsWith('-hot') || raw.endsWith('_hot')) {
+    variant = 'hot';
+    raw = raw.replace(/[-_]hot$/, '');
   } else if (raw.endsWith('-unvisited') || raw.endsWith('_unvisited')) {
     variant = 'unvisited';
     raw = raw.replace(/[-_]unvisited$/, '');
@@ -62,10 +66,10 @@ export function resolveCanonicalCategoryFromIconId(
 /**
  * Creates a MapLibre-compatible image buffer ({ width, height, data: Uint8Array | Uint8ClampedArray }) with the category badge rendered.
  * Renders at 2x resolution:
- * - unvisited: 48x48 muted gray stone badge (fog of food state)
- * - visited: 52x52 vibrant badge with checkmark indicator
- * - selected: 64x64 prominent orange badge
- * - normal: 48x48 standard category badge
+ * - unvisited (quiet/normal): 44x44 dark stone badge (dim/tối tối, không có gì dư thừa)
+ * - hot (trending/báo khen/đánh giá cao): 54x54 vibrant amber-red badge with flame 🔥 indicator
+ * - visited: 50x50 vibrant badge with emerald checkmark ✓ indicator
+ * - selected: 64x64 prominent orange badge with glowing outline
  */
 export function createCategoryIconCanvas(
   category: CanonicalCategory,
@@ -73,8 +77,9 @@ export function createCategoryIconCanvas(
 ): { width: number; height: number; data: Uint8Array | Uint8ClampedArray } {
   const isSelected = variant === 'selected';
   const isVisited = variant === 'visited';
+  const isHot = variant === 'hot';
   const isUnvisited = variant === 'unvisited';
-  const size = isSelected ? 64 : isVisited ? 52 : 48;
+  const size = isSelected ? 64 : isHot ? 54 : isVisited ? 50 : 44;
 
   if (typeof document !== 'undefined') {
     try {
@@ -85,7 +90,7 @@ export function createCategoryIconCanvas(
       if (ctx) {
         const meta = CANONICAL_CATEGORIES[category] || CANONICAL_CATEGORIES.OTHER_FOOD || CANONICAL_CATEGORIES.RESTAURANT;
         const center = size / 2;
-        const radius = isSelected ? 26 : isVisited ? 21 : 19;
+        const radius = isSelected ? 26 : isHot ? 22 : isVisited ? 20 : 17;
 
         // Clear
         ctx.clearRect(0, 0, size, size);
@@ -93,16 +98,19 @@ export function createCategoryIconCanvas(
         // Outer shadow
         ctx.save();
         ctx.shadowColor = isSelected
-          ? 'rgba(255, 107, 53, 0.45)'
+          ? 'rgba(255, 107, 53, 0.50)'
+          : isHot
+          ? 'rgba(234, 88, 12, 0.45)'
           : isVisited
           ? 'rgba(16, 185, 129, 0.35)'
-          : 'rgba(45, 41, 38, 0.20)';
-        ctx.shadowBlur = isSelected ? 8 : isVisited ? 6 : 3;
-        ctx.shadowOffsetY = isSelected ? 3 : 2;
+          : 'rgba(0, 0, 0, 0.25)';
+        ctx.shadowBlur = isSelected ? 8 : isHot ? 7 : isVisited ? 5 : 2;
+        ctx.shadowOffsetY = isSelected ? 3 : isHot ? 2.5 : isVisited ? 2 : 1;
 
         // Background circle fill:
-        // - unvisited: muted neutral stone gray (#78716C)
-        // - visited: vivid category color or BiteQuest emerald/orange (#10B981 / #FF6B35)
+        // - unvisited (quiet): muted dark slate/stone (#3F3F46) - "tối tối"
+        // - hot: vibrant gradient amber-orange-red (#EA580C)
+        // - visited: emerald green / category tint (#10B981)
         // - selected: vibrant BiteQuest Orange (#FF6B35)
         const ambientColors: Record<CanonicalCategory, string> = {
           CAFE_DRINK: '#6B4E38',
@@ -119,13 +127,15 @@ export function createCategoryIconCanvas(
           OTHER_FOOD: '#57534E',
         };
 
-        let bgFill = '#57534E';
+        let bgFill = '#3F3F46';
         if (isSelected) {
           bgFill = '#FF6B35';
+        } else if (isHot) {
+          bgFill = '#EA580C'; // Warm red-orange for hot venues
         } else if (isVisited) {
-          bgFill = ambientColors[category] || '#FF6B35';
+          bgFill = '#10B981'; // Emerald for visited
         } else if (isUnvisited) {
-          bgFill = '#78716C'; // Clean muted slate/stone gray for unvisited places
+          bgFill = '#3F3F46'; // Dim dark slate gray for normal unvisited venues
         } else {
           bgFill = ambientColors[category] || '#57534E';
         }
@@ -137,26 +147,56 @@ export function createCategoryIconCanvas(
         ctx.restore();
 
         // Border:
-        // - visited: bright white with double ring or emerald accent
-        // - unvisited: subtle stone-300 border
+        // - selected: 3.5px white
+        // - hot: 2.5px light amber #FEF08A
+        // - visited: 2.5px white
+        // - unvisited: subtle 1.2px stone-500 border
         ctx.beginPath();
         ctx.arc(center, center, radius, 0, Math.PI * 2);
-        ctx.strokeStyle = isUnvisited ? '#D6D3D1' : '#FFFFFF';
-        ctx.lineWidth = isSelected ? 3.5 : isVisited ? 2.8 : 2.0;
+        ctx.strokeStyle = isSelected
+          ? '#FFFFFF'
+          : isHot
+          ? '#FEF08A'
+          : isVisited
+          ? '#FFFFFF'
+          : '#71717A';
+        ctx.lineWidth = isSelected ? 3.5 : isHot ? 2.5 : isVisited ? 2.5 : 1.2;
         ctx.stroke();
 
         // Inner icon / pictogram glyph
         ctx.save();
-        ctx.font = isSelected ? '26px sans-serif' : isVisited ? '22px sans-serif' : '19px sans-serif';
+        ctx.font = isSelected ? '26px sans-serif' : isHot ? '21px sans-serif' : isVisited ? '20px sans-serif' : '16px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = isUnvisited ? '#F5F5F4' : '#FFFFFF';
+        ctx.fillStyle = isUnvisited ? '#D4D4D8' : '#FFFFFF';
         if (isUnvisited) {
-          ctx.globalAlpha = 0.88;
+          ctx.globalAlpha = 0.78; // Dimmed slightly for normal unvisited venues
         }
-        // Slight vertical optical center adjustment for emoji / glyphs
         ctx.fillText(meta.symbolGlyph || '🍴', center, center + (isSelected ? 2 : 1));
         ctx.restore();
+
+        // If HOT, add a mini flame badge 🔥 on the top right
+        if (isHot) {
+          const badgeX = center + radius * 0.72;
+          const badgeY = center - radius * 0.72;
+          const badgeR = 7;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
+          ctx.fillStyle = '#EF4444'; // Red badge for flame
+          ctx.fill();
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // Flame glyph
+          ctx.font = '9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🔥', badgeX, badgeY + 0.5);
+          ctx.restore();
+        }
 
         // If visited, add a mini shiny checkmark badge on the top right
         if (isVisited) {
@@ -234,7 +274,7 @@ export function registerAllCategoryIcons(map: any): void {
   const categories = Object.keys(CANONICAL_CATEGORIES) as CanonicalCategory[];
 
   categories.forEach((cat) => {
-    const variants: IconVariant[] = ['unvisited', 'visited', 'selected', 'normal'];
+    const variants: IconVariant[] = ['unvisited', 'visited', 'selected', 'normal', 'hot'];
 
     variants.forEach((v) => {
       const suffix = v === 'normal' ? '' : `-${v}`;

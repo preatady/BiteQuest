@@ -145,6 +145,25 @@ export interface Place {
     bestEtaMin: number;
     savedMin: number;
   };
+  activeDeal?: DealVoucher;
+  deals?: DealVoucher[];
+}
+
+export interface DealVoucher {
+  id: string;
+  title: string;
+  discountLabel: string; // e.g. "-20%", "TẶNG NEM", "GIẢM 50K", "MUA 2 TẶNG 1"
+  code: string; // e.g. "BITEQUEST20", "SHOPEEFOOD50", "HIGHLANDS25"
+  description: string;
+  minBill?: number;
+  expiryDate?: string;
+  tag?: 'hot' | 'flash_sale' | 'exclusive' | 'community' | 'verified_real';
+  usageCount?: number;
+  channel?: 'in_store' | 'shopeefood' | 'grabfood' | 'direct_link' | 'all';
+  channelLabel?: string; // e.g. "Áp dụng tại quán", "Đặt qua ShopeeFood", "Đặt qua GrabFood"
+  howToUse?: string; // e.g. "Đọc mã cho thu ngân trước khi gọi món/in hóa đơn"
+  actionUrl?: string; // e.g. direct deep link to ShopeeFood / GrabFood / Fanpage
+  isVerified?: boolean;
 }
 
 export interface BiteCheckin {

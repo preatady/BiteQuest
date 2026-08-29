@@ -129,6 +129,14 @@ export const INITIAL_PLACES: Place[] = [
       bestEtaMin: 17,
       savedMin: 14,
     },
+    activeDeal: {
+      id: 'deal_bun_ca_co_lan',
+      title: 'Tặng Trà Tắc & Miễn Phí Thêm Bún Cá',
+      discountLabel: 'FREE TRÀ TẮC',
+      code: 'COLANFREE',
+      description: 'Tặng 1 ly Trà tắc sả mát lạnh và miễn phí gọi thêm bún cá giòn cho khách dùng tại quán.',
+      tag: 'hot',
+    },
   },
   {
     id: 'place_bun_ca_co_may',
@@ -163,6 +171,14 @@ export const INITIAL_PLACES: Place[] = [
       bestEtaMin: 14,
       savedMin: 8,
     },
+    activeDeal: {
+      id: 'deal_bun_ca_may',
+      title: 'Giảm 20% Bát Bún Cá Đặc Biệt Chả Mực',
+      discountLabel: '-20% BÁT ĐB',
+      code: 'BUNCA20',
+      description: 'Giảm ngay 20% khi gọi Bát Bún Cá Thập Cẩm Chả Mực Giã Tay vào giờ trưa.',
+      tag: 'flash_sale',
+    },
   },
   {
     id: 'place_blackbird_coffee',
@@ -196,6 +212,14 @@ export const INITIAL_PLACES: Place[] = [
       currentEtaMin: 25,
       bestEtaMin: 18,
       savedMin: 7,
+    },
+    activeDeal: {
+      id: 'deal_blackbird_combo',
+      title: 'Mua 1 Pour-Over Tặng 1 Bánh Cookie Bơ',
+      discountLabel: 'TẶNG COOKIE',
+      code: 'BLACKBIRD',
+      description: 'Tặng 1 bánh cookie bơ tươi nướng giòn khi thưởng thức bất kỳ dòng cà phê Pour-over hạt thủ công.',
+      tag: 'exclusive',
     },
   },
   {

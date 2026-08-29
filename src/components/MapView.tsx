@@ -35,10 +35,22 @@ import { GoogleMapsSearchBar } from './GoogleMapsSearchBar';
 import { CategoryFilterBar } from './CategoryFilterBar';
 import { buildGoogleMapsDirectionsUrl } from '../utils/navigationHelper';
 import {
-  scanRenderedMapPlaces,
   convertVectorFeatureToPlace,
   isFoodOrVenueFeature,
+  scanRenderedMapPlaces,
 } from '../services/maps/vectorTileScanner';
+import { generateFogOfWarGeoJSON } from '../services/maps/fogOfWarHelper';
+import { FogOfWarHUD } from './FogOfWarHUD';
+import { FomoLiveTicker } from './FomoLiveTicker';
+import { MysteryDropModal } from './MysteryDropModal';
+import { BiteRouletteModal } from './BiteRouletteModal';
+import { TrafficSmartNavigatorSheet } from './TrafficSmartNavigatorSheet';
+import { TrafficRouteResult } from '../services/maps/trafficSmartRoutingService';
+import {
+  getOrUpdateHotnessSnapshot,
+  calculateVenueHotness,
+  formatTimeUntilNext24hUpdate,
+} from '../services/hotnessEngine';
 
 interface MapViewProps {
   places: Place[];
@@ -56,6 +68,82 @@ interface MapViewProps {
 }
 
 export type ExploreMode = 'radar' | 'friends' | 'quest';
+
+// Fog of War layer definitions (Atmospheric mist with glowing beacons around explored areas)
+const fogFillLayer: any = {
+  id: 'fog-mask-fill',
+  type: 'fill',
+  source: 'fog-of-war-source',
+  filter: ['==', ['get', 'type'], 'fog-mask'],
+  paint: {
+    'fill-color': '#0B132B',
+    'fill-opacity': 0.88,
+  },
+};
+
+const fogUserBeaconGlowLayer: any = {
+  id: 'fog-user-beacon-glow',
+  type: 'line',
+  source: 'fog-of-war-source',
+  filter: ['==', ['get', 'type'], 'user-beacon'],
+  paint: {
+    'line-color': '#38BDF8',
+    'line-width': 3.5,
+    'line-opacity': 0.9,
+    'line-blur': 2,
+  },
+};
+
+const fogVisitedBeaconGlowLayer: any = {
+  id: 'fog-visited-beacon-glow',
+  type: 'line',
+  source: 'fog-of-war-source',
+  filter: ['==', ['get', 'type'], 'visited-beacon'],
+  paint: {
+    'line-color': '#F59E0B',
+    'line-width': 2.5,
+    'line-opacity': 0.85,
+    'line-blur': 1.5,
+  },
+};
+
+// Traffic-Smart Route polyline styling layers
+const trafficRouteCasingLayer: any = {
+  id: 'traffic-route-casing',
+  type: 'line',
+  source: 'traffic-route-source',
+  layout: {
+    'line-cap': 'round',
+    'line-join': 'round',
+  },
+  paint: {
+    'line-color': '#FFFFFF',
+    'line-width': 7,
+    'line-opacity': 0.95,
+  },
+};
+
+const trafficRouteLineLayer: any = {
+  id: 'traffic-route-line',
+  type: 'line',
+  source: 'traffic-route-source',
+  layout: {
+    'line-cap': 'round',
+    'line-join': 'round',
+  },
+  paint: {
+    'line-color': [
+      'case',
+      ['==', ['get', 'trafficLevel'], 'smooth'],
+      '#10B981',
+      ['==', ['get', 'trafficLevel'], 'moderate'],
+      '#F59E0B',
+      '#EF4444',
+    ],
+    'line-width': 4.5,
+    'line-opacity': 0.95,
+  },
+};
 
 // MapLibre native clustering layer definitions for background F&B POIs (Neutral map-compatible stone styling)
 const clusterLayer: any = {
@@ -103,31 +191,31 @@ const clusterCountLayer: any = {
   },
 };
 
-// Medium/Close Zoom category icon symbol layer with collision detection
+// Medium/Close Zoom category icon symbol layer - All icons rendered concurrently
 const unclusteredCategoryIconLayer: any = {
   id: 'unclustered-category-icon',
   type: 'symbol',
   source: 'background-pois',
-  filter: ['!', ['has', 'point_count']],
-  minzoom: 11.5,
   layout: {
     'icon-image': ['coalesce', ['get', 'iconName'], 'icon-other_food-unvisited'],
     'icon-size': [
       'interpolate',
       ['linear'],
       ['zoom'],
-      11.5,
-      0.65,
+      7,
+      0.55,
+      9,
+      0.68,
+      11,
+      0.82,
       13,
-      0.8,
-      15,
       0.95,
-      17,
-      1.05,
+      15,
+      1.12,
     ],
-    'icon-allow-overlap': false,
-    'icon-ignore-placement': false,
-    'icon-padding': 1.5,
+    'icon-allow-overlap': true,
+    'icon-ignore-placement': true,
+    'icon-padding': 0,
   },
 };
 
@@ -136,8 +224,7 @@ const ambientVenueLabelLayer: any = {
   id: 'ambient-venue-labels',
   type: 'symbol',
   source: 'background-pois',
-  filter: ['!', ['has', 'point_count']],
-  minzoom: 12.5,
+  minzoom: 9.5,
   layout: {
     'text-field': ['get', 'name'],
     'text-font': ['Noto Sans Regular'],
@@ -145,19 +232,21 @@ const ambientVenueLabelLayer: any = {
       'interpolate',
       ['linear'],
       ['zoom'],
-      12.5,
       9.5,
-      14,
+      8.5,
+      11.0,
+      9.5,
+      12.5,
       10.5,
-      15,
-      12,
-      17,
-      13,
+      14,
+      11.5,
+      16,
+      13.0,
     ],
     'text-offset': [0, 1.25],
     'text-anchor': 'top',
     'text-max-width': 9.5,
-    'text-padding': 2,
+    'text-padding': 1.5,
     'text-optional': true,
     'text-allow-overlap': false,
     'text-ignore-placement': false,
@@ -166,8 +255,10 @@ const ambientVenueLabelLayer: any = {
     'text-color': [
       'case',
       ['==', ['get', 'isVisited'], 1],
-      '#0F172A',
-      '#57534E',
+      '#065F46',
+      ['==', ['get', 'isHot'], 1],
+      '#C2410C',
+      '#52525B',
     ],
     'text-halo-color': '#FFFFFF',
     'text-halo-width': 2.5,
@@ -176,9 +267,9 @@ const ambientVenueLabelLayer: any = {
       'interpolate',
       ['linear'],
       ['zoom'],
-      12.5,
-      0.75,
-      14,
+      11.0,
+      0.7,
+      13,
       0.9,
       15,
       1.0,
@@ -186,13 +277,13 @@ const ambientVenueLabelLayer: any = {
   },
 };
 
-// Far zoom subtle dot layer when zoom < 12.5
+// Far zoom subtle dot layer when zoom < 10.5
 const unclusteredFarCircleLayer: any = {
   id: 'unclustered-far-circle',
   type: 'circle',
   source: 'background-pois',
   filter: ['!', ['has', 'point_count']],
-  maxzoom: 12.5,
+  maxzoom: 10.5,
   paint: {
     'circle-color': ['get', 'color'],
     'circle-radius': 3.5,
@@ -227,13 +318,27 @@ export const MapView: React.FC<MapViewProps> = ({
     try {
       const saved = localStorage.getItem('bitequest_map_mode');
       if (saved === 'satellite') return 'satellite';
+      if (saved === 'fog_of_war') return 'fog_of_war';
+      if (saved === 'street') return 'street';
     } catch {
       // ignore
     }
-    return 'street';
+    return 'street'; // Default to crystal clear, bright street map
   });
   const [showLayerSwitcher, setShowLayerSwitcher] = useState(false);
+  const [isRadarBoosted, setIsRadarBoosted] = useState(false);
+  const [showMysteryDrop, setShowMysteryDrop] = useState(false);
+  const [showRoulette, setShowRoulette] = useState(false);
+  const [showTrafficSheet, setShowTrafficSheet] = useState(false);
+  const [selectedTrafficRoute, setSelectedTrafficRoute] = useState<TrafficRouteResult | null>(null);
   const mapRef = useRef<MapRef | null>(null);
+
+  const handleTriggerRadarScan = () => {
+    setIsRadarBoosted(true);
+    setTimeout(() => {
+      setIsRadarBoosted(false);
+    }, 6000);
+  };
 
   const handleSelectMapMode = (mode: MapMode) => {
     setMapMode(mode);
@@ -261,13 +366,20 @@ export const MapView: React.FC<MapViewProps> = ({
     provenance,
     isBeyondBoundary,
     lastFetchedCenter,
+    rippleStage,
     fetchNearbyPOIs,
+    triggerRippleExpansion,
+    loadPlacesForViewportArea,
+    filterPlacesTo50kmRadius,
     addDiscoveredPOIs,
   } = useExploreNearbyPlaces();
   const [selectedBackgroundPOI, setSelectedBackgroundPOI] = useState<UnifiedPlace | null>(null);
   const [viewportCenter, setViewportCenter] = useState<{ latitude: number; longitude: number }>(FALLBACK_CENTER);
   const [viewportRadius, setViewportRadius] = useState<number>(2500);
   const [isPioneerBannerDismissed, setIsPioneerBannerDismissed] = useState<boolean>(false);
+  const [isAreaSearching, setIsAreaSearching] = useState<boolean>(false);
+  const [areaSearchLoadedCount, setAreaSearchLoadedCount] = useState<number | null>(null);
+  const [copiedDealCode, setCopiedDealCode] = useState<string | null>(null);
   const moveEndDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Helper to calculate the viewport frame radius (distance from center to visible bounds)
@@ -303,13 +415,14 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [mapMode]);
 
-  // Request real browser geolocation on initial mount (ONE-SHOT)
+  // Request real browser geolocation on initial mount & trigger automatic ripple expansion
   useEffect(() => {
     if (initialGeolocatedRef.current) return;
     initialGeolocatedRef.current = true;
 
-    // Immediately fetch default / fallback center so the map is NEVER blank while GPS is resolving
-    fetchNearbyPOIs(FALLBACK_CENTER, 2000, {
+    // Immediately trigger ripple expansion starting from default center:
+    // First immediate perimeter (2.5km), then auto-radiating outwards to 6km, 12km, 20km
+    triggerRippleExpansion(FALLBACK_CENTER, {
       anchor: { latitude: FALLBACK_CENTER.latitude, longitude: FALLBACK_CENTER.longitude, isRealUserLocation: false },
     });
 
@@ -327,9 +440,12 @@ export const MapView: React.FC<MapViewProps> = ({
           setHasRealLocation(true);
           setIsLocating(false);
           setViewportCenter(coords);
-          fetchNearbyPOIs(coords, 2000, {
+          
+          // Trigger automatic ripple outward expansion from real user coordinates
+          triggerRippleExpansion(coords, {
             anchor: { latitude: coords.latitude, longitude: coords.longitude, isRealUserLocation: true },
           });
+
           mapRef.current?.flyTo({
             center: [coords.longitude, coords.latitude],
             zoom: 15,
@@ -356,7 +472,7 @@ export const MapView: React.FC<MapViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [fetchNearbyPOIs]);
+  }, [triggerRippleExpansion]);
 
   // Force map resize on mount and after layout transitions
   useEffect(() => {
@@ -382,6 +498,14 @@ export const MapView: React.FC<MapViewProps> = ({
     };
   }, [userLocation, hasRealLocation]);
 
+  // Mystery Drop Treasure Chest dynamic coordinate near the current viewport/user
+  const mysteryChestCoords = useMemo(() => {
+    return {
+      latitude: referenceLocation.latitude + 0.0028,
+      longitude: referenceLocation.longitude + 0.0035,
+    };
+  }, [referenceLocation]);
+
   // Deduplicate live Geoapify POIs against BiteQuest verified / promoted places
   const unpromotedNearbyPOIs = useMemo(() => {
     return nearbyPOIs.filter((poi) => {
@@ -405,15 +529,22 @@ export const MapView: React.FC<MapViewProps> = ({
     });
   }, [nearbyPOIs, places]);
 
-  // Promoted community places across the entire map
+  // All verified and community places loaded nationwide across 3 regions
   const localPromotedPlaces = useMemo(() => {
-    return places.filter((p) => typeof p.latitude === 'number' && typeof p.longitude === 'number');
+    return places.filter((p) => {
+      return typeof p.latitude === 'number' && typeof p.longitude === 'number';
+    });
   }, [places]);
 
   // Dynamic filter chips derived strictly from all venues in current map area
   const allLoadedVenues = useMemo(() => {
     return [...localPromotedPlaces, ...unpromotedNearbyPOIs];
   }, [localPromotedPlaces, unpromotedNearbyPOIs]);
+
+  // 24-Hour Hotness Snapshot Engine (Automatically recalculates every 24h based on ratings, press reviews, and check-ins)
+  const hotnessSnapshot = useMemo(() => {
+    return getOrUpdateHotnessSnapshot(allLoadedVenues);
+  }, [allLoadedVenues]);
 
   // Generate Deterministic Bite Opportunities via Radar Engine
   const radarOpportunities = useMemo(() => {
@@ -450,6 +581,73 @@ export const MapView: React.FC<MapViewProps> = ({
     return visited;
   }, [feedBites, user?.id, passport, places]);
 
+  // Visited geo-points for persistent Fog of War cleared zone beacons
+  const visitedLocations = useMemo(() => {
+    const locs: { latitude: number; longitude: number; name?: string }[] = [];
+    allLoadedVenues.forEach((venue: any) => {
+      if (
+        visitedPlaceIds.has(venue.id) ||
+        (venue.providerPlaceId && visitedPlaceIds.has(venue.providerPlaceId)) ||
+        (venue.googlePlaceId && visitedPlaceIds.has(venue.googlePlaceId)) ||
+        venue.userVisited
+      ) {
+        if (typeof venue.latitude === 'number' && typeof venue.longitude === 'number') {
+          locs.push({
+            latitude: venue.latitude,
+            longitude: venue.longitude,
+            name: venue.name,
+          });
+        }
+      }
+    });
+    (feedBites || []).forEach((b: any) => {
+      if (typeof b.latitude === 'number' && typeof b.longitude === 'number') {
+        locs.push({
+          latitude: b.latitude,
+          longitude: b.longitude,
+          name: b.placeName,
+        });
+      }
+    });
+    return locs;
+  }, [allLoadedVenues, visitedPlaceIds, feedBites]);
+
+  // Atmospheric Fog of War dynamic GeoJSON mask with holes
+  const fogGeoJSON = useMemo(() => {
+    return generateFogOfWarGeoJSON({
+      userLocation: referenceLocation,
+      visitedLocations,
+      visionRadiusMeters: 650,
+      visitedRadiusMeters: 400,
+      radarBoostActive: isRadarBoosted,
+    });
+  }, [referenceLocation, visitedLocations, isRadarBoosted]);
+
+  // Traffic-Smart Route GeoJSON feature
+  const trafficRouteGeoJSON = useMemo(() => {
+    if (!selectedTrafficRoute || !selectedTrafficRoute.routeCoordinates || selectedTrafficRoute.routeCoordinates.length === 0) {
+      return null;
+    }
+    return {
+      type: 'FeatureCollection' as const,
+      features: [
+        {
+          type: 'Feature' as const,
+          properties: {
+            trafficLevel: selectedTrafficRoute.trafficLevel,
+            trafficScore: selectedTrafficRoute.trafficScore,
+            delayMinutes: selectedTrafficRoute.delayMinutes,
+            placeName: selectedTrafficRoute.place?.name,
+          },
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: selectedTrafficRoute.routeCoordinates,
+          },
+        },
+      ],
+    };
+  }, [selectedTrafficRoute]);
+
   const todayResult = useMemo(() => {
     return adaptBiteOpportunities(radarOpportunities, {
       userPreferences: user?.foodPreferences,
@@ -458,6 +656,17 @@ export const MapView: React.FC<MapViewProps> = ({
       maxLimit: 3,
     });
   }, [radarOpportunities, user?.foodPreferences, referenceLocation.isRealUserLocation, visitedPlaceIds]);
+
+  // Check if map camera has panned significantly far (> 3.5km) from user GPS or base
+  const isPannedFarFromBase = useMemo(() => {
+    const base = lastFetchedCenter || userLocation || FALLBACK_CENTER;
+    if (!base || !viewportCenter) return false;
+    const dist = getDistance(
+      { latitude: base.latitude, longitude: base.longitude },
+      { latitude: viewportCenter.latitude, longitude: viewportCenter.longitude }
+    );
+    return dist > 3500;
+  }, [lastFetchedCenter, userLocation, viewportCenter]);
 
   const todayOpportunities = todayResult.opportunities;
 
@@ -526,8 +735,14 @@ export const MapView: React.FC<MapViewProps> = ({
           Boolean(poi.providerId && visitedPlaceIds.has(poi.providerId)) ||
           Boolean((poi as any).googlePlaceId && visitedPlaceIds.has((poi as any).googlePlaceId));
 
+        const vId = poi.id || (poi as any).providerId || poi.name;
+        const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(poi, hotnessSnapshot.calculatedAt);
+        const isHot = !isVisited && hotness.isHot;
+
         const iconName = isVisited
           ? `icon-${canonicalCat.toLowerCase()}-visited`
+          : isHot
+          ? `icon-${canonicalCat.toLowerCase()}-hot`
           : `icon-${canonicalCat.toLowerCase()}-unvisited`;
 
         return {
@@ -545,7 +760,12 @@ export const MapView: React.FC<MapViewProps> = ({
             categoryShortLabel: meta.shortLabel,
             iconName,
             isVisited: isVisited ? 1 : 0,
-            color: isVisited ? '#10B981' : '#78716C',
+            isHot: isHot ? 1 : 0,
+            hotScore: hotness.hotScore,
+            hotBadgeLabel: hotness.badgeLabel,
+            hotReason: hotness.reasons[0] || '',
+            pressSource: hotness.pressMention?.source || '',
+            color: isVisited ? '#10B981' : isHot ? '#EA580C' : '#3F3F46',
             address: poi.address,
             district: poi.district,
             city: poi.city || 'Hà Nội',
@@ -555,7 +775,7 @@ export const MapView: React.FC<MapViewProps> = ({
         };
       }),
     };
-  }, [filteredUnpromotedNearbyPOIs, visitedPlaceIds]);
+  }, [filteredUnpromotedNearbyPOIs, visitedPlaceIds, hotnessSnapshot]);
 
   // Filter promoted places in active area (Zero network fetch)
   const filteredPlaces = useMemo(() => {
@@ -690,38 +910,43 @@ export const MapView: React.FC<MapViewProps> = ({
 
     // 1. Check custom BiteQuest GeoJSON interactive layers
     const features = map.queryRenderedFeatures(event.point, {
-      layers: ['clusters', 'unclustered-category-icon', 'ambient-venue-labels', 'unclustered-far-circle'],
+      layers: ['unclustered-category-icon', 'ambient-venue-labels'],
     });
 
     if (features && features.length > 0) {
       const feature = features[0];
-      if (feature.layer.id === 'clusters') {
-        const clusterId = feature.properties?.cluster_id;
-        const source = map.getSource('background-pois') as any;
-        if (source && clusterId !== undefined) {
-          source.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
-            if (err) return;
-            map.easeTo({
-              center: (feature.geometry as any).coordinates,
-              zoom: Math.min(zoom + 0.8, 17),
-              duration: 500,
-            });
-          });
-        }
-        return;
-      }
 
       if (
         feature.layer.id === 'unclustered-category-icon' ||
-        feature.layer.id === 'ambient-venue-labels' ||
-        feature.layer.id === 'unclustered-far-circle'
+        feature.layer.id === 'ambient-venue-labels'
       ) {
         const poiId = feature.properties?.id;
-        const poi = nearbyPOIs.find((p) => p.id === poiId);
+        const poi =
+          nearbyPOIs.find((p) => p.id === poiId) ||
+          places.find((p) => p.id === poiId) ||
+          unpromotedNearbyPOIs.find((p) => p.id === poiId) ||
+          allLoadedVenues.find((p) => (p as any).id === poiId);
+
         if (poi) {
           onSelectPlace(null);
           setSelectedBackgroundPOI(poi);
           handleFlyTo(poi.latitude, poi.longitude);
+        } else if (feature.properties?.name) {
+          const coords = (feature.geometry as any)?.coordinates;
+          const fallbackPoi: UnifiedPlace = {
+            id: poiId || `poi_${Date.now()}`,
+            name: feature.properties.name,
+            category: feature.properties.category || 'street_food',
+            categoryLabel: feature.properties.categoryLabel || 'Ẩm thực',
+            address: feature.properties.address || '',
+            district: feature.properties.district || 'Hà Nội',
+            city: feature.properties.city || 'Hà Nội',
+            latitude: coords ? coords[1] : referenceLocation.latitude,
+            longitude: coords ? coords[0] : referenceLocation.longitude,
+          };
+          onSelectPlace(null);
+          setSelectedBackgroundPOI(fallbackPoi);
+          handleFlyTo(fallbackPoi.latitude, fallbackPoi.longitude);
         }
         return;
       }
@@ -762,36 +987,35 @@ export const MapView: React.FC<MapViewProps> = ({
     setSelectedBackgroundPOI(null);
   }, [nearbyPOIs, referenceLocation, onSelectPlace, addDiscoveredPOIs]);
 
-  // Scan vector map tiles whenever map finishes rendering to promote all OSM POIs across Vietnam
-  const scanMapTiles = useCallback(() => {
-    const map = mapRef.current?.getMap();
-    if (!map) return;
-    const vectorPlaces = scanRenderedMapPlaces(map, referenceLocation);
-    if (vectorPlaces.length > 0) {
-      addDiscoveredPOIs(vectorPlaces);
-    }
-  }, [referenceLocation, addDiscoveredPOIs]);
-
-  // Viewport tracking & smooth silent ambient loading when panning to new areas
+  // Viewport tracking & smooth ambient loading when panning to new areas
   const handleMapMoveEnd = useCallback(
     (e: any) => {
-      const center = e.target.getCenter();
+      const map = e.target;
+      const center = map.getCenter();
       const newCenter = { latitude: center.lat, longitude: center.lng };
       setViewportCenter(newCenter);
       const newRadius = calculateViewportRadius();
       setViewportRadius(newRadius);
 
-      // Immediately scan visible vector tiles in new viewport
-      scanMapTiles();
+      // Instantly promote all rendered vector tile food & drink venues to interactive BiteQuest pins
+      try {
+        const vectorVenues = scanRenderedMapPlaces(map, referenceLocation);
+        if (vectorVenues.length > 0) {
+          addDiscoveredPOIs(vectorVenues);
+        }
+      } catch (err) {
+        console.warn('[handleMapMoveEnd] scanRenderedMapPlaces error:', err);
+      }
 
       if (moveEndDebounceRef.current) {
         clearTimeout(moveEndDebounceRef.current);
       }
 
+      // Debounce panning fetch to 600ms and require at least 800m movement to prevent rapid request floods & lag
       moveEndDebounceRef.current = setTimeout(() => {
         const dist = lastFetchedCenter ? getDistance(lastFetchedCenter, newCenter) : Infinity;
-        if (dist > 250) {
-          fetchNearbyPOIs(newCenter, newRadius, {
+        if (dist > 800) {
+          fetchNearbyPOIs(newCenter, Math.max(newRadius, 5000), {
             anchor: {
               latitude: referenceLocation.latitude,
               longitude: referenceLocation.longitude,
@@ -799,9 +1023,9 @@ export const MapView: React.FC<MapViewProps> = ({
             },
           });
         }
-      }, 250);
+      }, 600);
     },
-    [calculateViewportRadius, lastFetchedCenter, referenceLocation, hasRealLocation, fetchNearbyPOIs, scanMapTiles]
+    [calculateViewportRadius, lastFetchedCenter, referenceLocation, hasRealLocation, fetchNearbyPOIs, addDiscoveredPOIs]
   );
 
   // Clean up debounce on unmount
@@ -817,7 +1041,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const handleMyLocationClick = () => {
     if (userLocation && hasRealLocation) {
       handleFlyTo(userLocation.latitude, userLocation.longitude);
-      fetchNearbyPOIs(userLocation, 2000, {
+      triggerRippleExpansion(userLocation, {
         anchor: {
           latitude: userLocation.latitude,
           longitude: userLocation.longitude,
@@ -833,7 +1057,7 @@ export const MapView: React.FC<MapViewProps> = ({
           setHasRealLocation(true);
           setIsLocating(false);
           handleFlyTo(coords.latitude, coords.longitude);
-          fetchNearbyPOIs(coords, 2000, {
+          triggerRippleExpansion(coords, {
             anchor: {
               latitude: coords.latitude,
               longitude: coords.longitude,
@@ -875,10 +1099,9 @@ export const MapView: React.FC<MapViewProps> = ({
           mapStyle={activeMapStyle}
           style={{ width: '100%', height: '100%' }}
           attributionControl={false}
-          interactiveLayerIds={['clusters', 'unclustered-category-icon', 'ambient-venue-labels', 'unclustered-far-circle']}
+          interactiveLayerIds={['unclustered-category-icon', 'ambient-venue-labels']}
           onClick={handleMapClick}
           onMoveEnd={handleMapMoveEnd}
-          onIdle={scanMapTiles}
           onError={(event: any) => {
             const errorObj = event?.error || {};
             const errorMsg =
@@ -894,6 +1117,27 @@ export const MapView: React.FC<MapViewProps> = ({
             const map = e.target;
             setupMapIconLifecycle(map);
             map.resize();
+            try {
+              const vectorVenues = scanRenderedMapPlaces(map, referenceLocation);
+              if (vectorVenues.length > 0) {
+                addDiscoveredPOIs(vectorVenues);
+              }
+            } catch (err) {
+              console.warn('[MapGL onLoad] scanRenderedMapPlaces error:', err);
+            }
+          }}
+          onIdle={(e) => {
+            const map = e.target;
+            if (map) {
+              try {
+                const vectorVenues = scanRenderedMapPlaces(map, referenceLocation);
+                if (vectorVenues.length > 0) {
+                  addDiscoveredPOIs(vectorVenues);
+                }
+              } catch (err) {
+                console.warn('[MapGL onIdle] scanRenderedMapPlaces error:', err);
+              }
+            }
           }}
         >
           {/* Top-right Navigation Controls positioned safely below top bar */}
@@ -901,21 +1145,47 @@ export const MapView: React.FC<MapViewProps> = ({
             <NavigationControl position="top-right" showCompass={false} />
           </div>
 
-          {/* Background Clustered POI GeoJSON Layer */}
+          {/* Background POI GeoJSON Layer - Direct unclustered rendering of all venues */}
           <Source
             id="background-pois"
             type="geojson"
             data={backgroundPOIGeoJSON}
-            cluster={true}
-            clusterMaxZoom={12}
-            clusterRadius={38}
+            cluster={false}
           >
-            <Layer {...clusterLayer} />
-            <Layer {...clusterCountLayer} />
-            <Layer {...unclusteredFarCircleLayer} />
             <Layer {...unclusteredCategoryIconLayer} />
             <Layer {...ambientVenueLabelLayer} />
           </Source>
+
+          {/* Fog of War RPG Atmospheric Mask & Beacon Glow Layers */}
+          {mapMode === 'fog_of_war' && (
+            <Source id="fog-of-war-source" type="geojson" data={fogGeoJSON}>
+              <Layer {...fogFillLayer} />
+              <Layer {...fogUserBeaconGlowLayer} />
+              <Layer {...fogVisitedBeaconGlowLayer} />
+            </Source>
+          )}
+
+          {/* Traffic-Smart Route Colored Polyline Layer */}
+          {trafficRouteGeoJSON && (
+            <Source id="traffic-route-source" type="geojson" data={trafficRouteGeoJSON}>
+              <Layer {...trafficRouteCasingLayer} />
+              <Layer {...trafficRouteLineLayer} />
+            </Source>
+          )}
+
+          {/* Subtle center beacon pulse in Fog of War mode */}
+          {mapMode === 'fog_of_war' && (
+            <Marker
+              longitude={referenceLocation.longitude}
+              latitude={referenceLocation.latitude}
+              anchor="center"
+            >
+              <div className="relative pointer-events-none flex items-center justify-center">
+                <div className="w-6 h-6 rounded-full bg-sky-400/40 animate-ping absolute pointer-events-none"></div>
+                <div className="w-3.5 h-3.5 rounded-full bg-sky-400 border border-white shadow-md z-10"></div>
+              </div>
+            </Marker>
+          )}
 
           {/* User Location Pulse Marker (Only displayed when verified real GPS is acquired) */}
           {userLocation && hasRealLocation && (
@@ -951,9 +1221,32 @@ export const MapView: React.FC<MapViewProps> = ({
             </Marker>
           )}
 
-          {/* Promoted BiteQuest Layer Markers (Radar / Friends / Quest with Non-Destructive Priority) */}
+          {/* Interactive Mystery Chest Marker (Flash Drop / FOMO Event) - Clean & Compact */}
+          <Marker
+            longitude={mysteryChestCoords.longitude}
+            latitude={mysteryChestCoords.latitude}
+            anchor="center"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setShowMysteryDrop(true);
+            }}
+          >
+            <div
+              className="relative group cursor-pointer transform hover:scale-125 active:scale-95 transition-all z-25 flex flex-col items-center select-none"
+              title="Rương Bí Mật Ẩm Thực (Chạm để mở!)"
+              id="marker-mystery-chest"
+            >
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600 flex items-center justify-center text-base shadow-lg border border-white chest-wobble">
+                🎁
+              </div>
+              <div className="w-8 h-8 rounded-full bg-amber-400/25 animate-ping absolute -inset-0.5 pointer-events-none"></div>
+            </div>
+          </Marker>
+
+          {/* Promoted BiteQuest Layer Markers (Clean, Uncluttered Circular Pins with on-hover tooltips) */}
           {filteredPlaces.map((place) => {
             const isSelected = activePlace?.id === place.id;
+            const isTrafficSelected = selectedTrafficRoute?.place?.id === place.id;
             const opp = opportunityMap.get(place.id);
             const isBookmarked = savedPlaceIds.includes(place.id);
             const isVisited =
@@ -961,11 +1254,10 @@ export const MapView: React.FC<MapViewProps> = ({
               Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
               Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
 
-            // Only show authentic review badge if verified bites or actual visits exist
-            const hasCommunityProof =
-              (place.verifiedBiteCount && place.verifiedBiteCount > 0) ||
-              (place.friendsVisited && place.friendsVisited.length > 0) ||
-              Boolean(place.communityVerified);
+            const vId = place.id || (place as any).providerPlaceId || place.name;
+            const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(place, hotnessSnapshot.calculatedAt);
+            const isHot = !isVisited && hotness.isHot;
+            const catMeta = CANONICAL_CATEGORIES[normalizeCategory(place)];
 
             const isScout = opp?.type === 'SCOUT_WINDOW';
             const isQuest = opp?.type === 'QUEST_MATCH';
@@ -991,80 +1283,89 @@ export const MapView: React.FC<MapViewProps> = ({
                 }}
               >
                 <div
-                  className={`relative group cursor-pointer transform hover:scale-110 active:scale-95 transition-all ${
+                  className={`relative group cursor-pointer transform hover:scale-115 active:scale-95 transition-all ${
                     isDimmedInMode ? 'opacity-40 scale-85 z-10' : 'opacity-100 z-20'
                   }`}
                   id={`marker-promoted-${place.id}`}
                 >
-                  {/* Authentic Community Review Indicator - ONLY shown when real check-ins/reviews exist */}
-                  {hasCommunityProof && !isSelected && (
-                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-[#10B981] text-white text-[9.5px] font-heading font-semibold shadow-[0_2px_8px_rgba(16,185,129,0.35)] whitespace-nowrap flex items-center gap-1 border border-white/90 animate-fade-in pointer-events-none z-30">
-                      <span className="text-[9px]">⭐</span>
-                      <span>Đã có review</span>
-                    </div>
-                  )}
-
                   {/* Outer Pulsing Opportunity Ring */}
-                  {isScout && (
-                    <div className="absolute -inset-2 rounded-full bg-[#2EC4B6]/30 animate-ping pointer-events-none"></div>
-                  )}
-                  {isQuest && (
-                    <div className="absolute -inset-2 rounded-full bg-[#FF9F1C]/30 animate-ping pointer-events-none"></div>
+                  {(isSelected || isTrafficSelected) && (
+                    <div className="absolute -inset-2 rounded-full bg-[#FF6B35]/40 animate-ping pointer-events-none"></div>
                   )}
 
-                  {/* Marker Pin Head - Dimmed/Gray for unvisited, Vibrant + Checkmark for visited */}
+                  {/* Marker Pin Head - Hot vs Visited vs Muted Normal Pin */}
                   <div
                     className={`relative flex items-center justify-center rounded-full border-2 transition-all shadow-md ${
-                      isSelected
-                        ? 'w-10 h-10 bg-[#FF6B35] border-white scale-110 shadow-lg text-white'
+                      isSelected || isTrafficSelected
+                        ? 'w-10 h-10 bg-[#FF6B35] border-white scale-110 shadow-lg text-white ring-4 ring-[#FF6B35]/30'
                         : isVisited
-                        ? 'w-9 h-9 bg-[#FF6B35] border-white ring-2 ring-[#10B981]/30 shadow-md text-white'
+                        ? 'w-8 h-8 bg-[#10B981] border-white ring-2 ring-[#10B981]/40 shadow-sm text-white'
+                        : isHot
+                        ? 'w-8.5 h-8.5 bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 border-amber-200 text-white shadow-md ring-2 ring-orange-400/40'
                         : isScout
-                        ? 'w-9 h-9 bg-[#2EC4B6] border-white text-white'
+                        ? 'w-8 h-8 bg-[#2EC4B6] border-white text-white'
                         : isQuest
-                        ? 'w-9 h-9 bg-[#FF9F1C] border-[#2D2926] text-[#2D2926]'
+                        ? 'w-8 h-8 bg-[#FF9F1C] border-[#2D2926] text-[#2D2926]'
                         : isFriendEcho
-                        ? 'w-9 h-9 bg-[#FF6B35] border-white text-white'
-                        : 'w-8 h-8 bg-[#78716C] border-[#D6D3D1] text-white/90 shadow-sm opacity-90'
+                        ? 'w-8 h-8 bg-[#FF6B35] border-white text-white'
+                        : 'w-7.5 h-7.5 bg-[#3F3F46] border-[#71717A] text-zinc-300 shadow-xs'
                     }`}
                   >
-                    <span className="text-sm">
-                      {isScout ? '🥇' : isQuest ? '🗺️' : isFriendEcho ? '👥' : CANONICAL_CATEGORIES[normalizeCategory(place)]?.symbolGlyph || '🍴'}
+                    <span className="text-xs">
+                      {isScout ? '🥇' : isQuest ? '🗺️' : isFriendEcho ? '👥' : catMeta?.symbolGlyph || '🍴'}
                     </span>
 
                     {/* Visited Checkmark Badge */}
                     {isVisited && (
-                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#10B981] rounded-full border border-white flex items-center justify-center shadow-xs">
-                        <span className="text-[9px] text-white font-bold">✓</span>
-                      </div>
+                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#10B981] rounded-full border border-white flex items-center justify-center text-[8px] text-white font-bold shadow-xs">
+                        ✓
+                      </span>
+                    )}
+
+                    {/* 24h Hot Flame Accent Badge */}
+                    {isHot && !isSelected && (
+                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 rounded-full border border-white flex items-center justify-center text-[8px] shadow-xs">
+                        🔥
+                      </span>
                     )}
 
                     {/* Bookmark Indicator Badge */}
-                    {isBookmarked && !isVisited && (
+                    {isBookmarked && !isVisited && !isHot && (
                       <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#00A7CB] rounded-full border border-white flex items-center justify-center">
                         <span className="text-[8px] text-white">★</span>
                       </div>
+                    )}
+
+                    {/* Active Deal / Voucher Badge */}
+                    {(place as any).activeDeal && !isVisited && (
+                      <span className="absolute -bottom-1 -left-1 w-3.5 h-3.5 bg-rose-500 rounded-full border border-white flex items-center justify-center text-[7px] shadow-xs text-white" title={`Ưu đãi: ${(place as any).activeDeal.discountLabel}`}>
+                        🎟️
+                      </span>
                     )}
                   </div>
 
                   {/* Bottom Pin Tip */}
                   <div
-                    className={`w-0 h-0 mx-auto border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] -mt-0.5 ${
-                      isSelected || isVisited
+                    className={`w-0 h-0 mx-auto border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] -mt-0.5 ${
+                      isSelected || isTrafficSelected
                         ? 'border-t-[#FF6B35]'
+                        : isVisited
+                        ? 'border-t-[#10B981]'
+                        : isHot
+                        ? 'border-t-orange-500'
                         : isScout
                         ? 'border-t-[#2EC4B6]'
                         : isQuest
                         ? 'border-t-[#FF9F1C]'
                         : isFriendEcho
                         ? 'border-t-[#FF6B35]'
-                        : 'border-t-[#78716C]'
+                        : 'border-t-[#3F3F46]'
                     }`}
                   ></div>
 
                   {/* Hover Tooltip */}
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-[#2D2926]/90 text-white font-heading text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow z-40">
-                    {place.name} {isVisited ? '• Đã check-in ✓' : '• Chưa khám phá (+50 XP)'}
+                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-[#1C1917]/95 backdrop-blur-md text-white font-heading text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md z-40 border border-white/20">
+                    {place.name} {isVisited ? '• Đã ăn ✓' : (place as any).activeDeal ? `• 🎟️ ${(place as any).activeDeal.discountLabel}` : isHot ? `• 🔥 ${hotness.badgeLabel || 'Đang Hot'}` : place.rating ? `• ${place.rating}★` : ''}
                   </div>
                 </div>
               </Marker>
@@ -1117,7 +1418,69 @@ export const MapView: React.FC<MapViewProps> = ({
           onOpenFullFilter={() => setShowFullFilterSheet(true)}
           totalVenuesCount={allLoadedVenues.length}
         />
+
+        {/* Dynamic FOMO Live Activity & Flash Drop Ticker */}
+        <FomoLiveTicker
+          places={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
+          onSelectPlaceByCoords={(lat, lng, placeId) => {
+            handleFlyTo(lat, lng, 16.5);
+            if (placeId) {
+              const match =
+                places.find((p) => p.id === placeId) ||
+                allLoadedVenues.find((v: any) => v.id === placeId);
+              if (match) {
+                onSelectPlace(match as Place);
+              }
+            }
+          }}
+          onOpenMysteryDrop={() => setShowMysteryDrop(true)}
+          className="w-full"
+        />
       </div>
+
+      {/* 3B. Floating "Tìm & Tải quán tại khu vực này" Trigger when user pans away */}
+      {isPannedFarFromBase && !isVenueSelected && (
+        <div className="absolute top-36 md:top-34 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-fade-in">
+          <button
+            type="button"
+            onClick={async () => {
+              setIsAreaSearching(true);
+              try {
+                const loaded = await loadPlacesForViewportArea(viewportCenter, Math.max(viewportRadius, 15000));
+                setAreaSearchLoadedCount(loaded);
+                setTimeout(() => setAreaSearchLoadedCount(null), 3500);
+              } finally {
+                setIsAreaSearching(false);
+              }
+            }}
+            disabled={isAreaSearching || isLoadingPOIs}
+            className="bg-white/96 hover:bg-white text-[#2D2926] active:scale-95 px-4 py-2 rounded-full shadow-[0_6px_24px_rgba(45,41,38,0.18)] border border-stone-200/90 font-heading text-xs font-bold flex items-center gap-2 cursor-pointer transition-all duration-200 group"
+            id="btn-load-this-area"
+          >
+            {isAreaSearching || isLoadingPOIs ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin"></span>
+                <span>Đang quét quán khu vực...</span>
+              </>
+            ) : areaSearchLoadedCount !== null ? (
+              <>
+                <span className="text-emerald-600 font-bold">✓</span>
+                <span className="text-emerald-700 font-semibold">Đã nạp {areaSearchLoadedCount} quán quanh đây!</span>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-[17px] text-[#FF6B35] group-hover:rotate-12 transition-transform">
+                  travel_explore
+                </span>
+                <span>Tìm & nạp quán tại khu vực này</span>
+                <span className="bg-[#FF6B35]/15 text-[#FF6B35] text-[10px] px-1.5 py-0.2 rounded-full font-extrabold">
+                  +50km
+                </span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* 4. Empty Search/Filter State Banner */}
       {totalVisibleVenues === 0 && isFilterActive && (
@@ -1353,7 +1716,40 @@ export const MapView: React.FC<MapViewProps> = ({
               </div>
 
               <div className="flex flex-col gap-1.5">
-                {/* 1. STREET MODE (OpenFreeMap Liberty) */}
+                {/* 1. FOG OF WAR RPG MODE (Innovative Mystery Explorer) */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectMapMode('fog_of_war')}
+                  className={`flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
+                    mapMode === 'fog_of_war'
+                      ? 'bg-sky-500/15 border-2 border-sky-500 text-[#2D2926]'
+                      : 'bg-[#FAF9F5] border border-[#2D2926]/5 hover:bg-[#F4F4F0] text-[#594139]'
+                  }`}
+                  id="layer-opt-fog"
+                  title="Chế độ Sương Mù Khám Phá RPG"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-950 text-sky-400 flex items-center justify-center text-base shadow-xs">
+                      🌫️
+                    </div>
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-heading text-xs font-bold text-[#2D2926]">Sương Mù RPG</span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-sky-100 text-sky-800">
+                          Sáng tạo
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-[#8D7168]">
+                        Mở sáng từng góc phố & săn quán ẩn
+                      </span>
+                    </div>
+                  </div>
+                  {mapMode === 'fog_of_war' && (
+                    <span className="material-symbols-outlined text-sky-600 text-[18px]">check_circle</span>
+                  )}
+                </button>
+
+                {/* 2. STREET MODE (OpenFreeMap Liberty) */}
                 <button
                   type="button"
                   onClick={() => handleSelectMapMode('street')}
@@ -1378,7 +1774,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   )}
                 </button>
 
-                {/* 2. SATELLITE MODE */}
+                {/* 3. SATELLITE MODE */}
                 {(() => {
                   const hasToken = isEsriTokenConfigured();
                   return (
@@ -1420,6 +1816,35 @@ export const MapView: React.FC<MapViewProps> = ({
           )}
         </div>
 
+        {/* 🚦 Traffic-Smart Avoid Congestion Floating Trigger */}
+        <button
+          type="button"
+          onClick={() => setShowTrafficSheet(true)}
+          className={`w-11 h-11 rounded-full shadow-[0_4px_16px_rgba(16,185,129,0.35)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-white group relative ${
+            selectedTrafficRoute ? 'bg-gradient-to-br from-emerald-500 to-teal-700 ring-2 ring-emerald-400' : 'bg-gradient-to-br from-emerald-600 to-emerald-800'
+          }`}
+          title="Tránh Tắc Đường, Mưa & Cảnh Báo Ngập Lụt"
+          id="btn-traffic-smart-navigator"
+        >
+          <span className="text-xl group-hover:scale-110 transition-transform">🚦</span>
+          {selectedTrafficRoute && (
+            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white animate-pulse"></span>
+          )}
+        </button>
+
+        {/* 🎲 Bite Roulette Floating Trigger */}
+        <button
+          type="button"
+          onClick={() => setShowRoulette(true)}
+          className="w-11 h-11 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full shadow-[0_4px_16px_rgba(245,158,11,0.4)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-white group relative"
+          title="Ăn gì hôm nay? (Vòng quay ẩm thực ngẫu nhiên)"
+          id="btn-bite-roulette"
+        >
+          <span className="text-xl group-hover:rotate-45 transition-transform duration-300">🎲</span>
+          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-white animate-ping"></span>
+          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-white"></span>
+        </button>
+
         {/* Re-Center GPS Button */}
         <button
           onClick={handleMyLocationClick}
@@ -1436,6 +1861,17 @@ export const MapView: React.FC<MapViewProps> = ({
           </span>
         </button>
       </div>
+
+      {/* Fog of War Interactive HUD Overlay */}
+      {mapMode === 'fog_of_war' && !activePlace && !selectedBackgroundPOI && (
+        <FogOfWarHUD
+          totalVenues={allLoadedVenues.length}
+          visitedCount={visitedLocations.length}
+          isRadarBoosted={isRadarBoosted}
+          onTriggerRadarScan={handleTriggerRadarScan}
+          onExitFogMode={() => handleSelectMapMode('street')}
+        />
+      )}
 
       {/* 6a. Discovery Peek Sheet (Compact Today Corner Widget on Explore) */}
       {!activePlace && !selectedBackgroundPOI && !isRadarOpen && (
@@ -1488,6 +1924,9 @@ export const MapView: React.FC<MapViewProps> = ({
           Boolean(selectedBackgroundPOI.providerId && visitedPlaceIds.has(selectedBackgroundPOI.providerId));
         const verifiedCount = (selectedBackgroundPOI as any).verifiedBiteCount || 0;
 
+        const vId = selectedBackgroundPOI.id || (selectedBackgroundPOI as any).providerId || selectedBackgroundPOI.name;
+        const poiHotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(selectedBackgroundPOI, hotnessSnapshot.calculatedAt);
+
         return (
           <div
             className="absolute bottom-22 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-[420px] z-40 transition-all duration-300 transform translate-y-0 pointer-events-auto"
@@ -1514,6 +1953,11 @@ export const MapView: React.FC<MapViewProps> = ({
                       <span className="bg-[#D1FAE5] text-[#065F46] border border-[#10B981] font-heading text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                         <span>✅</span>
                         <span>Đã ghé thăm</span>
+                      </span>
+                    ) : poiHotness.isHot ? (
+                      <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white font-heading text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                        <span>🔥</span>
+                        <span>{poiHotness.badgeLabel || 'Đang Hot (24h)'}</span>
                       </span>
                     ) : verifiedCount > 0 ? (
                       <span className="bg-[#D1FAE5] text-[#065F46] border border-[#10B981] font-heading text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -1542,6 +1986,34 @@ export const MapView: React.FC<MapViewProps> = ({
                   <span className="material-symbols-outlined text-[18px]">close</span>
                 </button>
               </div>
+
+              {/* 24h Hotness Media / Rating Spotlight */}
+              {poiHotness.isHot && !isVisited && (
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200/80 rounded-2xl p-2.5 flex flex-col gap-1.5 shadow-xs">
+                  <div className="flex items-center justify-between text-[10px] font-heading font-extrabold text-orange-800">
+                    <span className="flex items-center gap-1">
+                      <span>🔥 XU HƯỚNG ẨM THỰC 24H</span>
+                    </span>
+                    <span className="text-orange-600 font-semibold flex items-center gap-1">
+                      <span>🔄 Tự cập nhật: Còn {formatTimeUntilNext24hUpdate(hotnessSnapshot.nextUpdateAt)}</span>
+                    </span>
+                  </div>
+
+                  {poiHotness.pressMention ? (
+                    <div className="text-xs text-stone-800 flex flex-col gap-0.5 bg-white/80 p-2 rounded-xl border border-orange-100">
+                      <span className="font-bold text-orange-950 flex items-center gap-1">
+                        <span>📰 {poiHotness.pressMention.source}:</span>
+                        <span className="font-normal italic text-stone-700">"{poiHotness.pressMention.headline}"</span>
+                      </span>
+                    </div>
+                  ) : poiHotness.reasons.length > 0 ? (
+                    <div className="text-xs text-stone-800 flex items-center gap-1.5 bg-white/80 p-1.5 rounded-xl border border-orange-100 font-medium">
+                      <span>⭐</span>
+                      <span>{poiHotness.reasons[0]}</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
 
               {/* Distance & Info */}
               <div className="flex items-center justify-between text-xs text-[#594139] bg-[#FAF9F5] p-2.5 rounded-xl border border-[#2D2926]/5">
@@ -1676,11 +2148,23 @@ export const MapView: React.FC<MapViewProps> = ({
                     <span className="bg-[#10B981] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
                       <span>✓ Đã chinh phục</span>
                     </span>
-                  ) : (
-                    <span className="bg-black/60 backdrop-blur-md text-white font-heading text-xs font-semibold px-2.5 py-0.5 rounded-full border border-white/20 flex items-center gap-1">
-                      <span>🔍 Chưa khám phá (+50 XP)</span>
-                    </span>
-                  )}
+                  ) : (() => {
+                    const vId = activePlace.id || (activePlace as any).providerPlaceId || activePlace.name;
+                    const placeHotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(activePlace, hotnessSnapshot.calculatedAt);
+                    if (placeHotness.isHot) {
+                      return (
+                        <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white font-heading text-xs font-bold px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
+                          <span>🔥</span>
+                          <span>{placeHotness.badgeLabel || 'Đang Hot (24h)'}</span>
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="bg-black/60 backdrop-blur-md text-white font-heading text-xs font-semibold px-2.5 py-0.5 rounded-full border border-white/20 flex items-center gap-1">
+                        <span>🔍 Chưa khám phá (+50 XP)</span>
+                      </span>
+                    );
+                  })()}
 
                   {activeOpportunity?.type === 'SCOUT_WINDOW' && !isPlaceVisited && (
                     <span className="bg-[#2EC4B6] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
@@ -1731,6 +2215,43 @@ export const MapView: React.FC<MapViewProps> = ({
                   </p>
                 </div>
 
+                {/* 24h Hotness and Media Reviews Spotlight */}
+                {(() => {
+                  const vId = activePlace.id || (activePlace as any).providerPlaceId || activePlace.name;
+                  const placeHotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(activePlace, hotnessSnapshot.calculatedAt);
+                  if (placeHotness.isHot && !isPlaceVisited) {
+                    return (
+                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200/80 rounded-2xl p-2.5 flex flex-col gap-1.5 shadow-xs">
+                        <div className="flex items-center justify-between text-[10px] font-heading font-extrabold text-orange-800">
+                          <span className="flex items-center gap-1">
+                            <span>🔥 XU HƯỚNG ẨM THỰC 24H</span>
+                          </span>
+                          <span className="text-orange-600 font-semibold flex items-center gap-1">
+                            <span>🔄 Tự cập nhật: Còn {formatTimeUntilNext24hUpdate(hotnessSnapshot.nextUpdateAt)}</span>
+                          </span>
+                        </div>
+
+                        {placeHotness.pressMention && (
+                          <div className="text-xs text-stone-800 flex flex-col gap-0.5 bg-white/80 p-2 rounded-xl border border-orange-100">
+                            <span className="font-bold text-orange-950 flex items-center gap-1">
+                              <span>📰 {placeHotness.pressMention.source}:</span>
+                              <span className="font-normal italic text-stone-700">"{placeHotness.pressMention.headline}"</span>
+                            </span>
+                          </div>
+                        )}
+
+                        {placeHotness.reasons.length > 0 && !placeHotness.pressMention && (
+                          <div className="text-xs text-stone-800 flex items-center gap-1.5 bg-white/80 p-1.5 rounded-xl border border-orange-100 font-medium">
+                            <span>⭐</span>
+                            <span>{placeHotness.reasons[0]}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {/* Visited Status / Objective Highlight */}
                 {isPlaceVisited ? (
                   <div className="bg-[#ECFDF5] border border-[#10B981]/30 rounded-2xl p-2.5 flex items-center gap-2 text-xs font-heading text-[#065F46] font-bold">
@@ -1778,6 +2299,109 @@ export const MapView: React.FC<MapViewProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* 🎟️ Active Deal & Voucher Coupon Section */}
+                {(() => {
+                  const deal = (activePlace as any).activeDeal;
+                  if (!deal) return null;
+                  return (
+                    <div className="bg-gradient-to-br from-rose-50/95 via-amber-50/90 to-orange-50/95 border border-rose-200/90 rounded-2xl p-3.5 flex flex-col gap-2.5 shadow-xs relative overflow-hidden">
+                      {/* Deal Header */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-base">🎟️</span>
+                          <span className="text-[11px] font-heading font-black text-rose-800 uppercase tracking-wide truncate">
+                            {deal.channelLabel || 'MÃ ƯU ĐÃI THỰC TẾ'}
+                          </span>
+                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full shrink-0">
+                            ✓ Thật 100%
+                          </span>
+                        </div>
+                        <span className="bg-gradient-to-r from-rose-500 to-orange-500 text-white font-heading text-[10.5px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs shrink-0">
+                          {deal.discountLabel}
+                        </span>
+                      </div>
+
+                      {/* Deal Description & Title */}
+                      <div className="flex flex-col gap-1">
+                        <h4 className="text-xs sm:text-[13px] font-heading font-bold text-stone-900 leading-snug">
+                          {deal.title}
+                        </h4>
+                        <p className="text-[11px] text-stone-600 leading-normal">
+                          {deal.description}
+                        </p>
+                      </div>
+
+                      {/* Terms / How to use */}
+                      <div className="bg-white/80 rounded-xl p-2 border border-rose-200/60 flex flex-col gap-1 text-[10.5px]">
+                        <div className="flex items-center gap-1 text-stone-700 font-medium">
+                          <span className="text-xs">💡</span>
+                          <span><strong>Cách dùng:</strong> {deal.howToUse || 'Đọc mã cho thu ngân trước khi gọi món/in bill hoặc nhập vào app khi đặt.'}</span>
+                        </div>
+                        {deal.minBill && (
+                          <div className="text-[10px] text-stone-500 font-medium flex items-center gap-1">
+                            <span>🏷️</span>
+                            <span>Áp dụng đơn từ <strong>{deal.minBill.toLocaleString('vi-VN')}đ</strong></span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Code & Actions */}
+                      {deal.code && (
+                        <div className="flex items-center justify-between pt-1 gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-stone-500 font-semibold">Mã:</span>
+                            <span className="font-mono font-black text-xs bg-white text-rose-700 px-2.5 py-1 rounded-lg border border-rose-300 tracking-wider shadow-2xs select-all">
+                              {deal.code}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {deal.actionUrl && (
+                              <a
+                                href={deal.actionUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2.5 py-1 rounded-full text-[11px] font-heading font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-2xs flex items-center gap-1 transition-all"
+                              >
+                                <span>Mở app ↗</span>
+                              </a>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (navigator?.clipboard?.writeText) {
+                                  navigator.clipboard.writeText(deal.code);
+                                }
+                                setCopiedDealCode(deal.code);
+                                setTimeout(() => setCopiedDealCode(null), 2500);
+                              }}
+                              className={`px-3 py-1 rounded-full text-[11px] font-heading font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                copiedDealCode === deal.code
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-rose-600 hover:bg-rose-700 text-white shadow-2xs active:scale-95'
+                              }`}
+                              id="btn-copy-deal-code"
+                            >
+                              {copiedDealCode === deal.code ? (
+                                <>
+                                  <span>✓</span>
+                                  <span>Đã lưu mã!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                                  <span>Sao chép mã</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Distance & Address Info */}
                 <div className="flex items-center justify-between text-xs text-[#594139] bg-white p-2.5 rounded-xl border border-[#2D2926]/5">
@@ -1864,6 +2488,88 @@ export const MapView: React.FC<MapViewProps> = ({
         );
       })()}
 
+      {/* 8. Active Traffic-Smart Route Navigation Card (When a smart traffic route is selected) */}
+      {selectedTrafficRoute && !activePlace && (
+        <div className="absolute bottom-20 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-[490px] z-30 pointer-events-auto animate-fade-in">
+          <div className="bg-[#1C1917]/95 backdrop-blur-md text-white rounded-2xl p-3.5 border border-emerald-500/40 shadow-2xl flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center text-base font-bold shrink-0 text-white ${
+                    selectedTrafficRoute.weatherFlood && (selectedTrafficRoute.weatherFlood.routeFloodRisk === 'high_flood' || selectedTrafficRoute.weatherFlood.routeFloodRisk === 'moderate')
+                      ? 'bg-rose-600 shadow-md shadow-rose-600/30'
+                      : selectedTrafficRoute.trafficLevel === 'smooth'
+                      ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
+                      : selectedTrafficRoute.trafficLevel === 'moderate'
+                      ? 'bg-amber-500 shadow-md shadow-amber-500/30'
+                      : 'bg-red-500 shadow-md shadow-red-500/30'
+                  }`}
+                >
+                  {selectedTrafficRoute.weatherFlood?.weather?.isRainy ? '🌧️' : '🚦'}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <strong className="text-xs font-bold text-white truncate">
+                      {selectedTrafficRoute.place?.name}
+                    </strong>
+                    <span
+                      className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold border ${
+                        selectedTrafficRoute.trafficLevel === 'smooth'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : selectedTrafficRoute.trafficLevel === 'moderate'
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : 'bg-red-500/20 text-red-300 border-red-500/40'
+                      }`}
+                    >
+                      {selectedTrafficRoute.trafficLabel}
+                    </span>
+                    {selectedTrafficRoute.weatherFlood?.weather && (
+                      <span className="text-[9.5px] px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold">
+                        {selectedTrafficRoute.weatherFlood.weather.conditionIcon} {selectedTrafficRoute.weatherFlood.weather.temperatureC}°C
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-stone-300 truncate">
+                    {selectedTrafficRoute.distanceKmFormatted} • ~{selectedTrafficRoute.estimatedDurationMinutes} phút • {selectedTrafficRoute.smartAdvice}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTrafficRoute(null)}
+                className="w-7 h-7 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-300 flex items-center justify-center text-xs cursor-pointer shrink-0 transition-colors"
+                title="Tắt lộ trình"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Weather & Flood Alert if any */}
+            {selectedTrafficRoute.weatherFlood && selectedTrafficRoute.weatherFlood.detectedFloodSpots.length > 0 && (
+              <div className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-[10.5px] text-rose-200 flex items-center gap-1.5">
+                <span>⚠️</span>
+                <span className="truncate">
+                  Điểm đen ngập: <strong>{selectedTrafficRoute.weatherFlood.detectedFloodSpots[0].name}</strong> ({selectedTrafficRoute.weatherFlood.detectedFloodSpots[0].safeDetourAdvice})
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-stone-800 text-[11px]">
+              <span className="text-emerald-400 font-medium truncate mr-2">
+                💡 {selectedTrafficRoute.bestDepartureTimeAdvice}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowTrafficSheet(true)}
+                className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer shrink-0"
+              >
+                Đổi giờ / Quán khác
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 9. MapLibre OpenFreeMap & OpenStreetMap Proper Attribution */}
       <div
         className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] right-2 z-20 px-2 py-0.5 rounded bg-[#FAF9F5]/90 backdrop-blur-xs border border-[#2D2926]/10 text-[10px] text-[#8D7168] pointer-events-auto select-none flex items-center gap-1.5 shadow-xs"
@@ -1900,6 +2606,43 @@ export const MapView: React.FC<MapViewProps> = ({
           </a>
         )}
       </div>
+      {/* 10. Mystery Drop Gamified Reveal Modal */}
+      <MysteryDropModal
+        isOpen={showMysteryDrop}
+        onClose={() => setShowMysteryDrop(false)}
+        nearbyPlaces={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
+        onNavigateToPlace={(p) => {
+          handleFlyTo(p.latitude, p.longitude, 16.5);
+          onSelectPlace(p);
+        }}
+      />
+
+      {/* 11. Bite Roulette Spin-the-Wheel Modal */}
+      <BiteRouletteModal
+        isOpen={showRoulette}
+        onClose={() => setShowRoulette(false)}
+        places={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
+        onSelectPlace={(p) => {
+          handleFlyTo(p.latitude, p.longitude, 16.5);
+          onSelectPlace(p);
+        }}
+      />
+
+      {/* 12. 🚦 Smart Traffic & Peak-Hour Congestion Navigator Sheet */}
+      <TrafficSmartNavigatorSheet
+        isOpen={showTrafficSheet}
+        onClose={() => setShowTrafficSheet(false)}
+        places={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
+        userLocation={referenceLocation}
+        selectedRouteResult={selectedTrafficRoute}
+        onSelectRoute={(route) => {
+          setSelectedTrafficRoute(route);
+          if (route.place) {
+            handleFlyTo(route.place.latitude, route.place.longitude, 15.5);
+            onSelectPlace(route.place);
+          }
+        }}
+      />
     </div>
   );
 };
