@@ -48,7 +48,7 @@ export const FomoLiveTicker: React.FC<FomoLiveTickerProps> = ({
       type: 'mystery_drop',
       icon: '🎁',
       message: 'Rương Bí Mật vừa xuất hiện gần bạn!',
-      subtext: 'Mở ngay để nhận +150 XP & Deal x2',
+      subtext: 'Mở ngay để nhận +150 XP Khám Phá',
       badge: 'Còn 15p',
     });
 
@@ -59,7 +59,7 @@ export const FomoLiveTicker: React.FC<FomoLiveTickerProps> = ({
       icon: '🚦',
       message: 'Tìm quán né kẹt xe & dự báo giờ đi',
       subtext: 'Tính toán đường thông thoáng nhất cho 8h tối',
-      badge: 'AI Traffic',
+      badge: 'Lưu thông',
     });
 
     // 3. High rated or popular places (only 1 or 2 best)
@@ -115,20 +115,20 @@ export const FomoLiveTicker: React.FC<FomoLiveTickerProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="w-full bg-[#1C1917]/85 hover:bg-[#1C1917]/95 backdrop-blur-md text-white rounded-full py-1 px-2.5 border border-white/10 shadow-xs flex items-center justify-between gap-2 transition-all">
+      <div className="w-full bg-stone-900/60 hover:bg-stone-900/80 backdrop-blur-md text-stone-200 rounded-full py-0.5 px-2.5 border border-white/10 shadow-xs flex items-center justify-between gap-2 transition-all">
         {/* Main Clickable Area */}
         <button
           type="button"
           onClick={handleClick}
           className="flex-1 flex items-center gap-1.5 min-w-0 text-left cursor-pointer group"
         >
-          <span className="text-xs shrink-0">{currentEvent.icon}</span>
+          <span className="text-[11px] shrink-0 opacity-90">{currentEvent.icon}</span>
 
           <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-            <span className="font-heading text-[11.5px] font-semibold text-stone-100 truncate group-hover:text-amber-300">
+            <span className="font-heading text-[11px] font-medium text-stone-200 truncate group-hover:text-amber-200 transition-colors">
               {currentEvent.message}
             </span>
-            <span className="text-[8.5px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 shrink-0">
+            <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-stone-800/80 text-stone-300 font-medium border border-white/10 shrink-0">
               {currentEvent.badge}
             </span>
           </div>
@@ -141,7 +141,7 @@ export const FomoLiveTicker: React.FC<FomoLiveTickerProps> = ({
             e.stopPropagation();
             setIsDismissed(true);
           }}
-          className="w-4.5 h-4.5 rounded-full hover:bg-stone-700/80 text-stone-400 hover:text-white flex items-center justify-center text-[9px] shrink-0 transition-colors cursor-pointer"
+          className="w-4 h-4 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center text-[8.5px] shrink-0 transition-colors cursor-pointer"
           title="Ẩn thông báo"
         >
           ✕

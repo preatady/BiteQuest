@@ -250,6 +250,8 @@ export interface PostBiteResultData {
   journeyProgress: PostBiteJourneyProgress;
 }
 
+export type AchievementRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
 export interface AchievementBadge {
   id: string;
   title: string;
@@ -257,7 +259,13 @@ export interface AchievementBadge {
   emoji: string;
   isUnlocked: boolean;
   unlockedAt?: string;
-  rarity: 'common' | 'rare' | 'legendary';
+  rarity: AchievementRarity;
+  current?: number;
+  target?: number;
+  percentOwned?: number;
+  hint?: string;
+  actionLabel?: string;
+  category?: 'starter' | 'exploration' | 'timing' | 'dice' | 'night' | 'variety' | 'weather' | 'legend';
 }
 
 export interface GeminiAnalysisResult {
@@ -382,3 +390,24 @@ export interface TodayOpportunity {
   cta: 'OPEN_VENUE' | 'OPEN_MAP' | 'OPEN_JOURNEY';
   sourceOpportunityId?: string;
 }
+
+export type LeaderboardTier = 'diamond' | 'platinum' | 'gold' | 'silver' | 'bronze';
+
+export interface LeaderboardUser {
+  rank: number;
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string;
+  activeTitle: string;
+  xp: number;
+  level: number;
+  verifiedBitesCount: number;
+  firstBitesCount: number;
+  badgesCount: number;
+  districtName?: string;
+  isCurrentUser?: boolean;
+  tier: LeaderboardTier;
+  trend?: 'up' | 'down' | 'same';
+}
+

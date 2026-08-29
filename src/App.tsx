@@ -28,6 +28,7 @@ import { FriendFeedView } from './components/FriendFeedView';
 import { CameraBiteView } from './components/CameraBiteView';
 import { PassportView } from './components/PassportView';
 import { ProfileView } from './components/ProfileView';
+import { LeaderboardModal } from './components/LeaderboardModal';
 import { CommunitySpotModal } from './components/CommunitySpotModal';
 import { AchievementToast } from './components/AchievementToast';
 import { KnowledgeQuestModal } from './components/KnowledgeQuestModal';
@@ -78,6 +79,7 @@ export default function App() {
   const [authModalInitialMode, setAuthModalInitialMode] = useState<AuthMode>('entry');
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showBiteBotModal, setShowBiteBotModal] = useState(false);
+  const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     getInitialNotifications({ latitude: 21.0285, longitude: 105.7958 }, 'Cầu Giấy')
@@ -615,6 +617,8 @@ export default function App() {
             onNavigateToExplore={() => setActiveTab('explore')}
             onNavigateToCamera={() => handleNavigateToCamera()}
             onOpenKnowledgeQuest={(trackId) => setActiveKnowledgeQuestTrack(trackId)}
+            onUpdateTitle={(title) => setUser((prev) => ({ ...prev, activeTitle: title }))}
+            onOpenLeaderboard={() => setShowLeaderboardModal(true)}
           />
         )}
 
@@ -623,6 +627,7 @@ export default function App() {
             user={user}
             achievements={achievements}
             onUpdateTitle={(title) => setUser((prev) => ({ ...prev, activeTitle: title }))}
+            onNavigateToExplore={() => setActiveTab('explore')}
             onNavigateToPassport={() => setActiveTab('passport')}
             onNavigateToFriends={() => setActiveTab('friends')}
             onOpenKnowledge={() => setActiveKnowledgeQuestTrack('smart_biter')}
@@ -634,6 +639,7 @@ export default function App() {
             }}
             onOpenPersonalization={() => setShowOnboardingModal(true)}
             onOpenBiteBot={() => setShowBiteBotModal(true)}
+            onOpenLeaderboard={() => setShowLeaderboardModal(true)}
             onGoogleSignIn={handleGoogleSignIn}
             onGoogleSignOut={handleGoogleSignOut}
             isLoggedIn={isLoggedIn}
@@ -665,6 +671,7 @@ export default function App() {
           setShowAuthModal(true);
         }}
         onOpenBiteBot={() => setShowBiteBotModal(true)}
+        onOpenLeaderboard={() => setShowLeaderboardModal(true)}
         onGoogleSignIn={handleGoogleSignIn}
         onGoogleSignOut={handleGoogleSignOut}
         isLoggedIn={isLoggedIn}
@@ -779,6 +786,30 @@ export default function App() {
         }}
         onNavigateToTab={(tab) => {
           setActiveTab(tab);
+        }}
+      />
+
+      {/* 15. Leaderboard Modal (Đua Top Thực Thần - Mùa 1) */}
+      <LeaderboardModal
+        isOpen={showLeaderboardModal}
+        onClose={() => setShowLeaderboardModal(false)}
+        currentUser={user}
+        isLoggedIn={isLoggedIn}
+        onOpenAuthModal={() => {
+          setAuthModalInitialMode('entry');
+          setShowAuthModal(true);
+        }}
+        onSwitchUser={(newUser) => {
+          setUser(newUser);
+          setActiveToast({
+            title: 'Chuyển đổi hồ sơ demo',
+            subtitle: `Đang đăng nhập dưới tên: ${newUser.name || newUser.displayName}`,
+            emoji: '👤',
+          });
+        }}
+        onNavigateToPassport={() => {
+          setShowLeaderboardModal(false);
+          setActiveTab('passport');
         }}
       />
     </div>

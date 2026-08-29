@@ -11,6 +11,7 @@ interface NavigationDrawerProps {
   onOpenJudgeDev: () => void;
   onOpenAuthModal?: () => void;
   onOpenBiteBot?: () => void;
+  onOpenLeaderboard?: () => void;
   onGoogleSignIn?: () => void;
   onGoogleSignOut?: () => void;
   isLoggedIn?: boolean;
@@ -27,6 +28,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   onOpenJudgeDev,
   onOpenAuthModal,
   onOpenBiteBot,
+  onOpenLeaderboard,
   onGoogleSignIn,
   onGoogleSignOut,
   isLoggedIn = false,
@@ -218,6 +220,25 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               <span className="flex-1">Hồ Sơ & Danh Hiệu</span>
               {activeTab === 'profile' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
             </button>
+
+            {/* 4b. Leaderboard (Đua Top) */}
+            {onOpenLeaderboard && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenLeaderboard();
+                }}
+                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-heading text-xs font-bold text-left transition-all bg-gradient-to-r from-amber-500/10 to-[#FF6B35]/10 hover:from-amber-500/20 hover:to-[#FF6B35]/20 text-[#2D2926] border border-amber-500/20"
+                id="drawer-nav-leaderboard"
+              >
+                <span className="text-base">🏆</span>
+                <span className="flex-1 font-bold text-amber-700">Bảng Xếp Hạng Đua Top</span>
+                <span className="bg-amber-400/20 text-amber-900 text-[9px] font-heading font-black px-1.5 py-0.5 rounded-full">
+                  MÙA 1 🔥
+                </span>
+              </button>
+            )}
 
             {/* 5. BiteBot AI Concierge */}
             {onOpenBiteBot && (

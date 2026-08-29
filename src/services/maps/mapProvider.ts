@@ -9,12 +9,47 @@ export interface MapProviderConfig {
   isSatelliteConfigured: boolean;
 }
 
-// 1. OpenMapTiles & OpenFreeMap Vector Tile Styles (Production-safe, 100% open, zero client API key required)
+// 1. Primary Base Map: Official OpenFreeMap Liberty Vector Style (100% open, zero client API key required)
 export const OPENFREEMAP_LIBERTY_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 export const OPENFREEMAP_BRIGHT_STYLE = 'https://tiles.openfreemap.org/styles/bright';
 export const OPENFREEMAP_POSITRON_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 
-// 2. Satellite Provider Check (Official Esri ArcGIS Imagery / Basemap Styles v2)
+// 2. High-Performance Fallback: Carto Voyager Basemap (Used ONLY if OpenFreeMap fails to load)
+export const CARTO_VOYAGER_STYLE = {
+  version: 8 as const,
+  name: 'Carto Voyager (Fallback Street Map)',
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+  sources: {
+    'carto-voyager': {
+      type: 'raster' as const,
+      tiles: [
+        'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+        'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+        'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+        'https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+      ],
+      tileSize: 256,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors, © <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>',
+      maxzoom: 20,
+    },
+  },
+  layers: [
+    {
+      id: 'carto-voyager-layer',
+      type: 'raster' as const,
+      source: 'carto-voyager',
+      minzoom: 0,
+      maxzoom: 20,
+      paint: {
+        'raster-opacity': 1,
+        'raster-fade-duration': 100,
+        'raster-contrast': 0.05,
+      },
+    },
+  ],
+};
+
+// 4. Satellite Provider Check (Official Esri ArcGIS Imagery / Basemap Styles v2)
 export function getEsriToken(): string {
   if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
     const env = (import.meta as any).env;
@@ -38,6 +73,16 @@ export function getCustomSatelliteUrl(): string {
   return '';
 }
 
+export function getCustomStreetUrl(): string {
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_MAP_STREET_URL) {
+    return (import.meta as any).env.VITE_MAP_STREET_URL;
+  }
+  if (typeof process !== 'undefined' && process.env?.VITE_MAP_STREET_URL) {
+    return process.env.VITE_MAP_STREET_URL;
+  }
+  return '';
+}
+
 export function getEsriImageryStyleUrl(token?: string): string {
   const activeToken = token || getEsriToken();
   if (!activeToken) return '';
@@ -47,8 +92,6 @@ export function getEsriImageryStyleUrl(token?: string): string {
 }
 
 export function isSatelliteConfigured(): boolean {
-  // Esri World Imagery public raster tile server is built-in and always available with zero API key.
-  // If a custom token/URL is configured, it will use that instead.
   return true;
 }
 
@@ -69,36 +112,11 @@ export function getSatelliteProviderName(): string {
   return 'Esri World Imagery';
 }
 
-export function getMapStyleForMode(mode: MapMode): any {
-  if (mode === 'satellite') {
-    const customUrl = getCustomSatelliteUrl();
-    if (customUrl && customUrl.trim().length > 0) {
-      return customUrl;
-    }
-    const token = getEsriToken();
-    if (token && token.trim().length > 0) {
-      return getEsriImageryStyleUrl(token);
-    }
-    return ESRI_WORLD_IMAGERY_STYLE;
-  }
-  if (mode === 'fog_of_war') {
-    return OPENFREEMAP_LIBERTY_STYLE;
-  }
-  return OPENFREEMAP_LIBERTY_STYLE;
-}
-
-export function getMapAttributionForMode(mode: MapMode): string {
-  if (mode === 'satellite') {
-    return '© OpenStreetMap contributors, © Esri, Maxar, Earthstar Geographics, GIS User Community';
-  }
-  return '© OpenStreetMap contributors, © OpenFreeMap';
-}
-
-// 3. Esri World Imagery Public Raster Tiles (Standard zero-key global satellite imagery)
+// 5. Esri World Imagery Public Raster Tiles (Standard zero-key global satellite imagery)
 export const ESRI_WORLD_IMAGERY_STYLE = {
   version: 8 as const,
   name: 'Esri World Imagery',
-  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     'esri-satellite': {
       type: 'raster' as const,
@@ -119,26 +137,26 @@ export const ESRI_WORLD_IMAGERY_STYLE = {
       minzoom: 0,
       paint: {
         'raster-opacity': 1,
+        'raster-fade-duration': 100,
       },
     },
   ],
 };
 
-// 4. OpenMapTiles / OSM Standard Fallback Style
+// 6. OpenStreetMap Standard Style
 export const OSM_STANDARD_STYLE = {
   version: 8 as const,
   name: 'OpenStreetMap Standard',
-  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     'osm-standard': {
       type: 'raster' as const,
       tiles: [
-        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
-      attribution: '© OpenStreetMap contributors, © OpenFreeMap',
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+      maxzoom: 19,
     },
   },
   layers: [
@@ -148,21 +166,64 @@ export const OSM_STANDARD_STYLE = {
       source: 'osm-standard',
       minzoom: 0,
       maxzoom: 19,
+      paint: {
+        'raster-opacity': 1,
+        'raster-fade-duration': 100,
+      },
     },
   ],
 };
 
+export function getMapStyleForMode(mode: MapMode, useFallback: boolean = false): any {
+  if (mode === 'satellite') {
+    const customUrl = getCustomSatelliteUrl();
+    if (customUrl && customUrl.trim().length > 0) {
+      return customUrl;
+    }
+    const token = getEsriToken();
+    if (token && token.trim().length > 0) {
+      return getEsriImageryStyleUrl(token);
+    }
+    return ESRI_WORLD_IMAGERY_STYLE;
+  }
+
+  const customStreet = getCustomStreetUrl();
+  if (customStreet && customStreet.trim().length > 0) {
+    return customStreet;
+  }
+
+  // If fallback is explicitly requested due to OpenFreeMap load failure
+  if (useFallback) {
+    return CARTO_VOYAGER_STYLE;
+  }
+
+  // Primary Base Map: OpenFreeMap Liberty
+  return OPENFREEMAP_LIBERTY_STYLE;
+}
+
+export function getMapAttributionForMode(mode: MapMode, useFallback: boolean = false): string {
+  if (mode === 'satellite') {
+    return '© Esri, Maxar, Earthstar Geographics, GIS User Community';
+  }
+  if (useFallback) {
+    return '© OpenStreetMap contributors, © CARTO';
+  }
+  return '© OpenStreetMap contributors, © OpenFreeMap';
+}
+
 /**
  * Returns the production-safe MapLibre provider configuration.
- * Uses OpenFreeMap Liberty vector tile infrastructure without client-exposed secrets or watermarks.
+ * Uses OpenFreeMap Liberty as primary base map with zero client-exposed secrets or watermarks.
  */
-export function getMapLibreConfig(mode: MapMode = 'street'): MapProviderConfig {
+export function getMapLibreConfig(mode: MapMode = 'street', useFallback: boolean = false): MapProviderConfig {
   return {
-    styleUrl: getMapStyleForMode(mode),
+    styleUrl: getMapStyleForMode(mode, useFallback),
     defaultCenter: [105.7958, 21.0285], // Cau Giay district center, Hanoi
     defaultZoom: 14.5,
-    attribution: getMapAttributionForMode(mode),
+    attribution: getMapAttributionForMode(mode, useFallback),
     mode,
     isSatelliteConfigured: true,
   };
 }
+
+

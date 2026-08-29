@@ -123,7 +123,7 @@ export const MysteryDropModal: React.FC<MysteryDropModalProps> = ({
                 🎉 Chúc mừng bạn đã mở khóa!
               </span>
               <h3 className="font-heading text-xl font-black text-white">
-                +150 XP & Deal x2 Quán Hot
+                +150 XP Khám Phá Quán Hot
               </h3>
               {targetPlace && (
                 <div className="mt-2 p-3 rounded-2xl bg-stone-900/80 border border-amber-500/30 text-left flex items-center gap-3">

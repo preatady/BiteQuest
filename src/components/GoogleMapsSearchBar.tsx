@@ -30,6 +30,7 @@ interface GoogleMapsSearchBarProps {
   onOpenBiteBot?: () => void;
   onOpenTraffic?: () => void;
   onOpenComparator?: (initialVenues?: (Place | UnifiedPlace)[]) => void;
+  onOpenRoulette?: () => void;
   onOpenMenu?: () => void;
   onOpenNotifications?: () => void;
   userXp?: number;
@@ -360,6 +361,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
   onOpenBiteBot,
   onOpenTraffic,
   onOpenComparator,
+  onOpenRoulette,
   onOpenMenu,
   onOpenNotifications,
   userXp,
@@ -615,7 +617,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
             if (!isOpen) setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          placeholder={isListening ? 'Đang lắng nghe giọng nói...' : 'Tìm quán ăn, bún chả, cà phê...'}
+          placeholder={isListening ? 'Đang lắng nghe giọng nói...' : 'Bạn muốn đi đâu? (VD: Phở, Cà phê...)'}
           className="bg-transparent border-none focus:outline-none w-full min-w-0 text-[13.5px] font-heading font-medium text-stone-800 placeholder:text-stone-400"
           id="input-google-maps-search"
           autoComplete="off"
@@ -673,6 +675,20 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
         >
           {/* Quick Smart Actions Header */}
           <div className="p-2 bg-gradient-to-r from-stone-50 via-white to-stone-50 border-b border-stone-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {onOpenRoulette && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenRoulette();
+                }}
+                className="px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-950 border border-orange-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+              >
+                <span>🎲</span>
+                <span>Hôm nay ăn gì?</span>
+              </button>
+            )}
+
             {onOpenTraffic && (
               <button
                 type="button"

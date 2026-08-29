@@ -165,16 +165,16 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
 
     if (hourlyWeather.isRainy && safestWeather.place.id !== fastest.place.id) {
       bestPick = safestWeather;
-      reason = `Vì thời tiết lúc ${selectedHour}:00 có mưa (${hourlyWeather.conditionLabel}), tuyến đến ${bestPick.place.name} an toàn nhất, tránh các điểm ngập úng và chỗ đỗ xe có mái che.`;
+      reason = `Vì thời tiết lúc ${selectedHour}:00 có mưa (${hourlyWeather.conditionLabel}), tuyến đến ${bestPick.place.name} an toàn nhất, đường khô ráo và chỗ đỗ xe có mái che.`;
     } else if (fastest.trafficScore >= 75) {
       bestPick = fastest;
-      reason = `Tuyến đến ${bestPick.place.name} là tối ưu nhất với thời gian đi chỉ ~${bestPick.estimatedDurationMinutes} phút, đường cực kỳ thông thoáng (Điểm lưu thông: ${bestPick.trafficScore}/100) và né được các nút giao tắc nghẽn.`;
+      reason = `Tuyến đến ${bestPick.place.name} là tối ưu nhất với thời gian đi chỉ ~${bestPick.estimatedDurationMinutes} phút, đường rất thông thoáng và né được các nút giao hay ùn ứ.`;
     } else if (highestRated.place.rating >= 4.7 && highestRated.estimatedDurationMinutes <= fastest.estimatedDurationMinutes + 8) {
       bestPick = highestRated;
-      reason = `${bestPick.place.name} có điểm đánh giá vượt trội (${bestPick.place.rating}⭐) với chất lượng món xuất sắc, trong khi thời gian di chuyển chỉ chênh lệch ~${highestRated.estimatedDurationMinutes - fastest.estimatedDurationMinutes} phút so với quán gần nhất.`;
+      reason = `${bestPick.place.name} có đánh giá rất cao (${bestPick.place.rating}⭐) với chất lượng món ngon chuẩn vị, trong khi thời gian di chuyển chỉ chênh lệch ~${highestRated.estimatedDurationMinutes - fastest.estimatedDurationMinutes} phút so với quán gần nhất.`;
     } else {
       bestPick = fastest;
-      reason = `${bestPick.place.name} giúp tiết kiệm tối đa thời gian trên đường (~${bestPick.estimatedDurationMinutes} phút), tránh mệt mỏi trong khung giờ cao điểm.`;
+      reason = `${bestPick.place.name} giúp tiết kiệm tối đa thời gian trên đường (~${bestPick.estimatedDurationMinutes} phút), di chuyển nhẹ nhàng trong khung giờ này.`;
     }
 
     return {
@@ -185,7 +185,7 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
       highestRatedVenue: highestRated,
       safestWeatherVenue: safestWeather,
       reason,
-      detailedSummary: `Trong khung giờ ${selectedHour}:00 (${congestionFactor.description}), AI đã mô phỏng ${comparedTrafficResults.length} lộ trình di chuyển. Lựa chọn hợp lý nhất là "${bestPick.place.name}" để vừa đảm bảo thưởng thức món ngon, vừa tối ưu thời gian di chuyển không lo tắc đường.`,
+      detailedSummary: `Lúc ${selectedHour}:00 (${congestionFactor.description}), lựa chọn phù hợp nhất là "${bestPick.place.name}" để vừa thưởng thức trọn vẹn món ngon, vừa tối ưu thời gian di chuyển mà không lo kẹt xe.`,
     };
   }, [comparedTrafficResults, hourlyWeather, selectedHour, congestionFactor]);
 
@@ -213,11 +213,11 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
                   So Sánh Quán & Lộ Trình Thông Minh
                 </h3>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                  AI Multi-Route
+                  Tối ưu theo giờ
                 </span>
               </div>
               <p className="text-[11px] text-stone-300">
-                Tính toán thời gian tối ưu, né tắc đường, tránh mưa ngập & so sánh đa chiều
+                Tính toán thời gian tối ưu, né điểm ùn ứ & đường ngập nước
               </p>
             </div>
           </div>
@@ -533,11 +533,11 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
                           </span>
                         </div>
 
-                        {/* Quest XP & Voucher */}
+                        {/* Quest XP */}
                         <div className="flex items-center justify-between py-1">
-                          <span className="text-stone-500 text-[11px]">🎁 Ưu đãi & XP:</span>
+                          <span className="text-stone-500 text-[11px]">🎁 Thưởng Quest:</span>
                           <span className="text-[#FF6B35] font-bold text-[11px]">
-                            {place.activeDeal ? place.activeDeal.discountLabel : '+50 XP Check-in'}
+                            +50 XP Check-in
                           </span>
                         </div>
                       </div>

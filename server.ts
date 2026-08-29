@@ -220,66 +220,14 @@ async function startServer() {
   // Trust proxy for container ingress / Cloud Run reverse proxy
   app.set('trust proxy', 1);
 
-  // 1. Helmet HTTP Security Headers with safe CSP (permitting MapLibre, tiles, Web Workers, Firebase, Cloudinary, AI Studio iframe)
+  // 1. Helmet HTTP Security Headers (Optimized for AI Studio iframe & mobile preview)
   app.use(
     helmet({
       xFrameOptions: false,
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          frameAncestors: ["'self'", "https://aistudio.google.com", "https://*.google.com"],
-          connectSrc: [
-            "'self'",
-            "https://*.run.app",
-            "https://tiles.openfreemap.org",
-            "https://*.basemaps.cartocdn.com",
-            "https://*.tile.openstreetmap.org",
-            "https://*.openstreetmap.org",
-            "https://demotiles.maplibre.org",
-            "https://*.maplibre.org",
-            "https://*.arcgisonline.com",
-            "https://services.arcgisonline.com",
-            "https://server.arcgisonline.com",
-            "https://*.arcgis.com",
-            "https://api.geoapify.com",
-            "https://maps.geoapify.com",
-            "https://*.geoapify.com",
-            "https://*.googleapis.com",
-            "https://*.firebaseio.com",
-            "https://identitytoolkit.googleapis.com",
-            "https://securetoken.googleapis.com",
-            "https://api.cloudinary.com",
-            "https://res.cloudinary.com",
-            "ws:",
-            "wss:",
-          ],
-          imgSrc: [
-            "'self'",
-            "data:",
-            "blob:",
-            "https://*.basemaps.cartocdn.com",
-            "https://*.tile.openstreetmap.org",
-            "https://*.openstreetmap.org",
-            "https://*.arcgisonline.com",
-            "https://services.arcgisonline.com",
-            "https://server.arcgisonline.com",
-            "https://*.arcgis.com",
-            "https://images.unsplash.com",
-            "https://res.cloudinary.com",
-            "https://*.googleusercontent.com",
-            "https://lh3.googleusercontent.com",
-            "https://maps.geoapify.com",
-            "https://*.geoapify.com",
-            "https://tiles.openfreemap.org",
-          ],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://apis.google.com", "https://*.firebaseapp.com"],
-          workerSrc: ["'self'", "blob:"],
-          childSrc: ["'self'", "blob:"],
-          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://unpkg.com"],
-          fontSrc: ["'self'", "data:", "https://fonts.gstatic.com", "https://demotiles.maplibre.org", "https://tiles.openfreemap.org"],
-        },
-      },
+      contentSecurityPolicy: false,
       crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
+      crossOriginResourcePolicy: false,
     })
   );
 

@@ -17,6 +17,27 @@
   --font-body: "Be Vietnam Pro", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
 }
 
+/* Complete scrollbar elimination on all platforms, browsers and containers */
+html,
+body,
+#root,
+*,
+*::before,
+*::after {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE and Edge */
+}
+
+*::-webkit-scrollbar,
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
 body {
   font-family: var(--font-body);
   background-color: var(--color-creamy-base);

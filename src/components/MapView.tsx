@@ -2,13 +2,21 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import MapGL, { Marker, NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+
+// Configure MapLibre Web Worker explicitly for Vite bundle so vector tiles (roads, buildings, water) render correctly
+if (typeof (maplibregl as any).setWorkerUrl === 'function') {
+  (maplibregl as any).setWorkerUrl(maplibreWorkerUrl);
+}
 import { getDistance } from 'geolib';
 import { Place, BiteCheckin, DistrictPassport, User, BiteOpportunity } from '../types';
 import { UnifiedPlace } from '../services/maps/types';
 import {
   getMapLibreConfig,
   MapMode,
+  CARTO_VOYAGER_STYLE,
   OPENFREEMAP_LIBERTY_STYLE,
+  OSM_STANDARD_STYLE,
   ESRI_WORLD_IMAGERY_STYLE,
   getMapStyleForMode,
   isSatelliteConfigured,
@@ -151,7 +159,7 @@ const trafficRouteLineLayer: any = {
   },
 };
 
-// MapLibre native clustering layer definitions for background F&B POIs (Neutral map-compatible stone styling)
+// MapLibre native clustering layer definitions for background F&B POIs (Subtle, calm, secondary cluster indicators)
 const clusterLayer: any = {
   id: 'clusters',
   type: 'circle',
@@ -161,24 +169,24 @@ const clusterLayer: any = {
     'circle-color': [
       'step',
       ['get', 'point_count'],
-      '#57534E', // neutral stone-600
-      6,
-      '#44403C', // neutral stone-700
-      15,
-      '#292524', // neutral stone-800
+      '#78716C', // neutral stone-500 (small groups)
+      12,
+      '#57534E', // stone-600 (medium groups)
+      35,
+      '#44403C', // stone-700 (dense areas)
     ],
     'circle-radius': [
       'step',
       ['get', 'point_count'],
-      14,
-      6,
-      18,
-      15,
-      22,
+      9.5, // Small & discreet: 9.5px radius for <12 points
+      12,
+      12, // 12px for 12-34 points
+      35,
+      14.5, // Max 14.5px radius for 35+ points (Never giant black circles)
     ],
-    'circle-stroke-width': 2.5,
+    'circle-stroke-width': 1.5,
     'circle-stroke-color': '#FFFFFF',
-    'circle-opacity': 0.92,
+    'circle-opacity': 0.82,
   },
 };
 
@@ -190,38 +198,46 @@ const clusterCountLayer: any = {
   layout: {
     'text-field': '{point_count_abbreviated}',
     'text-font': ['Noto Sans Bold'],
-    'text-size': 11,
+    'text-size': 10,
   },
   paint: {
     'text-color': '#FFFFFF',
   },
 };
 
-// Medium/Close Zoom category icon symbol layer - All icons rendered concurrently
+// Medium/Close Zoom category icon symbol layer - Clean Level of Detail scaling with collision detection
 const unclusteredCategoryIconLayer: any = {
   id: 'unclustered-category-icon',
   type: 'symbol',
   source: 'background-pois',
+  minzoom: 12.8,
   layout: {
     'icon-image': ['coalesce', ['get', 'iconName'], 'icon-other_food-unvisited'],
     'icon-size': [
       'interpolate',
       ['linear'],
       ['zoom'],
-      7,
-      0.55,
-      9,
-      0.68,
-      11,
-      0.82,
-      13,
-      0.95,
-      15,
-      1.12,
+      12.8,
+      0.72,
+      14.5,
+      0.92,
+      16.5,
+      1.1,
     ],
-    'icon-allow-overlap': true,
-    'icon-ignore-placement': true,
-    'icon-padding': 0,
+    'icon-allow-overlap': false,
+    'icon-ignore-placement': false,
+    'icon-padding': 8,
+  },
+  paint: {
+    'icon-opacity': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      12.8,
+      0.65,
+      14,
+      0.95,
+    ],
   },
 };
 
@@ -230,7 +246,7 @@ const ambientVenueLabelLayer: any = {
   id: 'ambient-venue-labels',
   type: 'symbol',
   source: 'background-pois',
-  minzoom: 9.5,
+  minzoom: 14.2,
   layout: {
     'text-field': ['get', 'name'],
     'text-font': ['Noto Sans Regular'],
@@ -238,21 +254,15 @@ const ambientVenueLabelLayer: any = {
       'interpolate',
       ['linear'],
       ['zoom'],
-      9.5,
-      8.5,
-      11.0,
-      9.5,
-      12.5,
+      14.2,
       10.5,
-      14,
-      11.5,
       16,
-      13.0,
+      12.5,
     ],
-    'text-offset': [0, 1.25],
+    'text-offset': [0, 1.3],
     'text-anchor': 'top',
     'text-max-width': 9.5,
-    'text-padding': 1.5,
+    'text-padding': 4,
     'text-optional': true,
     'text-allow-overlap': false,
     'text-ignore-placement': false,
@@ -264,7 +274,7 @@ const ambientVenueLabelLayer: any = {
       '#065F46',
       ['==', ['get', 'isHot'], 1],
       '#C2410C',
-      '#52525B',
+      '#44403C',
     ],
     'text-halo-color': '#FFFFFF',
     'text-halo-width': 2.5,
@@ -273,29 +283,11 @@ const ambientVenueLabelLayer: any = {
       'interpolate',
       ['linear'],
       ['zoom'],
-      11.0,
-      0.7,
-      13,
-      0.9,
-      15,
+      14.2,
+      0.8,
+      15.5,
       1.0,
     ],
-  },
-};
-
-// Far zoom subtle dot layer when zoom < 10.5
-const unclusteredFarCircleLayer: any = {
-  id: 'unclustered-far-circle',
-  type: 'circle',
-  source: 'background-pois',
-  filter: ['!', ['has', 'point_count']],
-  maxzoom: 10.5,
-  paint: {
-    'circle-color': ['get', 'color'],
-    'circle-radius': 3.5,
-    'circle-stroke-width': 1,
-    'circle-stroke-color': '#FFFFFF',
-    'circle-opacity': 0.75,
   },
 };
 
@@ -344,6 +336,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [selectedTrafficRoute, setSelectedTrafficRoute] = useState<TrafficRouteResult | null>(null);
   const [showComparatorModal, setShowComparatorModal] = useState(false);
   const [comparatorInitialVenues, setComparatorInitialVenues] = useState<(Place | UnifiedPlace)[]>([]);
+  const [currentZoom, setCurrentZoom] = useState<number>(14.5);
   const mapRef = useRef<MapRef | null>(null);
 
   const handleOpenComparator = (initialVenues?: (Place | UnifiedPlace)[]) => {
@@ -403,7 +396,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [isPioneerBannerDismissed, setIsPioneerBannerDismissed] = useState<boolean>(false);
   const [isAreaSearching, setIsAreaSearching] = useState<boolean>(false);
   const [areaSearchLoadedCount, setAreaSearchLoadedCount] = useState<number | null>(null);
-  const [copiedDealCode, setCopiedDealCode] = useState<string | null>(null);
+  const [isStyleFallbackActive, setIsStyleFallbackActive] = useState<boolean>(false);
   const moveEndDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Helper to calculate the viewport frame radius (distance from center to visible bounds)
@@ -835,6 +828,85 @@ export const MapView: React.FC<MapViewProps> = ({
     });
   }, [localPromotedPlaces, activeCategoryFilter, searchQuery]);
 
+  const activePlace = selectedPlace;
+  const activeOpportunity = activePlace ? opportunityMap.get(activePlace.id) : null;
+  const isSaved = activePlace ? savedPlaceIds.includes(activePlace.id) : false;
+
+  // Information Hierarchy for interactive React markers:
+  // - Far zoom (< 12.5): Only selected focal point & top recommendation (1 place) to prevent visual noise.
+  // - Medium zoom (12.5 <= zoom < 14.5): High relevance places (selected, top recommendation, active quest/scout, friend echo, visited, bookmarks, top-rated).
+  // - Close zoom (>= 14.5): All curated places with full category icons and collision-safe distribution.
+  // - Search/Filter: Only places matching the search query or category filter.
+  // - Selected place is always the prominent focal point.
+  const visibleReactMarkerPlaces = useMemo(() => {
+    const isSearchActive = Boolean(searchQuery.trim());
+    const isFilterActive = activeCategoryFilter !== 'ALL';
+    const topRecommendationId = todayOpportunities.length > 0 ? todayOpportunities[0].venueId : null;
+
+    return filteredPlaces.filter((place) => {
+      const isSelected = activePlace?.id === place.id;
+      const isTrafficSelected = selectedTrafficRoute?.place?.id === place.id;
+      if (isSelected || isTrafficSelected) return true;
+
+      // When searching or category filtering, show all matching results
+      if (isSearchActive || isFilterActive) return true;
+
+      const isTopRecommended = topRecommendationId === place.id;
+      if (isTopRecommended) return true;
+
+      const opp = opportunityMap.get(place.id);
+      const isScout = opp?.type === 'SCOUT_WINDOW';
+      const isQuest = opp?.type === 'QUEST_MATCH';
+      const isFriendEcho = opp?.type === 'FRIEND_ECHO' && Boolean(opp.friendActivity);
+      const isBookmarked = savedPlaceIds.includes(place.id);
+      const isVisited =
+        visitedPlaceIds.has(place.id) ||
+        Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
+        Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
+
+      const vId = place.id || (place as any).providerPlaceId || place.name;
+      const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(place, hotnessSnapshot.calculatedAt);
+      const isHot = !isVisited && hotness.isHot;
+
+      if (exploreMode === 'friends') return isFriendEcho || (place.friendsVisited && place.friendsVisited.length > 0);
+      if (exploreMode === 'quest') return isQuest || isScout;
+
+      // Far zoom: only selected & top recommended (and active quest/scout if any)
+      if (currentZoom < 12.5) {
+        return isScout || isQuest;
+      }
+
+      // Medium zoom: only prominent relevance places
+      if (currentZoom < 14.5) {
+        return (
+          isScout ||
+          isQuest ||
+          isFriendEcho ||
+          isBookmarked ||
+          isVisited ||
+          isHot ||
+          (place.rating && place.rating >= 4.5)
+        );
+      }
+
+      // Close zoom: render curated places
+      return true;
+    });
+  }, [
+    filteredPlaces,
+    activePlace?.id,
+    selectedTrafficRoute?.place?.id,
+    searchQuery,
+    activeCategoryFilter,
+    todayOpportunities,
+    opportunityMap,
+    savedPlaceIds,
+    visitedPlaceIds,
+    hotnessSnapshot,
+    exploreMode,
+    currentZoom,
+  ]);
+
   // Filtered radar opportunities for the bottom carousel
   const displayedOpportunities = useMemo(() => {
     if (activeCategoryFilter === 'ALL' && !searchQuery.trim()) {
@@ -851,10 +923,6 @@ export const MapView: React.FC<MapViewProps> = ({
       return true;
     });
   }, [radarOpportunities, activeCategoryFilter, searchQuery]);
-
-  const activePlace = selectedPlace;
-  const activeOpportunity = activePlace ? opportunityMap.get(activePlace.id) : null;
-  const isSaved = activePlace ? savedPlaceIds.includes(activePlace.id) : false;
 
   const activeDistanceM = useMemo(() => {
     if (!activePlace) return 0;
@@ -952,11 +1020,34 @@ export const MapView: React.FC<MapViewProps> = ({
 
     // 1. Check custom BiteQuest GeoJSON interactive layers
     const features = map.queryRenderedFeatures(event.point, {
-      layers: ['unclustered-category-icon', 'ambient-venue-labels'],
+      layers: ['clusters', 'unclustered-category-icon', 'ambient-venue-labels'],
     });
 
     if (features && features.length > 0) {
       const feature = features[0];
+
+      // Handle cluster tap -> zoom in smoothly to expand
+      if (feature.layer.id === 'clusters') {
+        const clusterId = feature.properties?.cluster_id;
+        const source: any = map.getSource('background-pois');
+        if (source && typeof source.getClusterExpansionZoom === 'function') {
+          source.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+            if (err) return;
+            map.easeTo({
+              center: (feature.geometry as any).coordinates,
+              zoom: Math.min(zoom + 0.6, 16.5),
+              duration: 500,
+            });
+          });
+        } else {
+          map.easeTo({
+            center: (feature.geometry as any).coordinates,
+            zoom: map.getZoom() + 2,
+            duration: 500,
+          });
+        }
+        return;
+      }
 
       if (
         feature.layer.id === 'unclustered-category-icon' ||
@@ -1033,11 +1124,13 @@ export const MapView: React.FC<MapViewProps> = ({
   const handleMapMoveEnd = useCallback(
     (e: any) => {
       const map = e.target;
+      if (!map) return;
       const center = map.getCenter();
       const newCenter = { latitude: center.lat, longitude: center.lng };
       setViewportCenter(newCenter);
       const newRadius = calculateViewportRadius();
       setViewportRadius(newRadius);
+      setCurrentZoom(map.getZoom());
 
       // Instantly promote all rendered vector tile food & drink venues to interactive BiteQuest pins
       try {
@@ -1120,8 +1213,8 @@ export const MapView: React.FC<MapViewProps> = ({
   };
 
   const activeMapStyle = useMemo(() => {
-    return getMapStyleForMode(mapMode);
-  }, [mapMode]);
+    return getMapStyleForMode(mapMode, isStyleFallbackActive);
+  }, [mapMode, isStyleFallbackActive]);
 
   const totalVisibleVenues = filteredPlaces.length + filteredUnpromotedNearbyPOIs.length;
   const isFilterActive = activeCategoryFilter !== 'ALL' || Boolean(searchQuery.trim());
@@ -1141,8 +1234,13 @@ export const MapView: React.FC<MapViewProps> = ({
           mapStyle={activeMapStyle}
           style={{ width: '100%', height: '100%' }}
           attributionControl={false}
-          interactiveLayerIds={['unclustered-category-icon', 'ambient-venue-labels']}
+          interactiveLayerIds={['clusters', 'unclustered-category-icon', 'ambient-venue-labels']}
           onClick={handleMapClick}
+          onMove={(e) => {
+            if (e.viewState?.zoom) {
+              setCurrentZoom(e.viewState.zoom);
+            }
+          }}
           onMoveEnd={handleMapMoveEnd}
           onError={(event: any) => {
             const errorObj = event?.error || {};
@@ -1152,7 +1250,20 @@ export const MapView: React.FC<MapViewProps> = ({
                 : (errorObj as any)?.message ||
                   (typeof event?.message === 'string' ? event.message : '') ||
                   (typeof event?.status === 'number' ? `HTTP ${event.status}` : 'MapLibre event');
-            console.warn('[MapLibre Event]', errorMsg);
+            
+            console.warn('[MapLibre Event / Error]', errorMsg, event);
+
+            // Log actual error and fallback to Carto Voyager ONLY if OpenFreeMap style itself genuinely fails to load
+            if (
+              !isStyleFallbackActive &&
+              mapMode !== 'satellite' &&
+              (errorMsg.toLowerCase().includes('failed to load style') ||
+               errorMsg.toLowerCase().includes('could not load style') ||
+               (event?.dataType === 'style' && (errorObj?.status >= 400 || errorMsg.includes('fetch'))))
+            ) {
+              console.warn('[BiteQuest Map Fallback] OpenFreeMap style loading error detected, switching to Carto Voyager fallback. Actual error:', errorMsg);
+              setIsStyleFallbackActive(true);
+            }
           }}
           onLoad={(e) => {
             setMapLoadError(false);
@@ -1187,13 +1298,17 @@ export const MapView: React.FC<MapViewProps> = ({
             <NavigationControl position="top-right" showCompass={false} />
           </div>
 
-          {/* Background POI GeoJSON Layer - Direct unclustered rendering of all venues */}
+          {/* Background POI GeoJSON Layer - Subtle clustering at far zoom, Category symbols at mid/close zoom */}
           <Source
             id="background-pois"
             type="geojson"
             data={backgroundPOIGeoJSON}
-            cluster={false}
+            cluster={true}
+            clusterMaxZoom={12.5}
+            clusterRadius={36}
           >
+            <Layer {...clusterLayer} />
+            <Layer {...clusterCountLayer} />
             <Layer {...unclusteredCategoryIconLayer} />
             <Layer {...ambientVenueLabelLayer} />
           </Source>
@@ -1285,8 +1400,8 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
           </Marker>
 
-          {/* Promoted BiteQuest Layer Markers (Clean, Uncluttered Circular Pins with on-hover tooltips & Smart LOD) */}
-          {filteredPlaces.map((place) => {
+          {/* Promoted BiteQuest Layer Markers (Hierarchical Category Badge Pins, 0 Grey Dots) */}
+          {visibleReactMarkerPlaces.map((place) => {
             const isSelected = activePlace?.id === place.id;
             const isTrafficSelected = selectedTrafficRoute?.place?.id === place.id;
             const opp = opportunityMap.get(place.id);
@@ -1295,6 +1410,8 @@ export const MapView: React.FC<MapViewProps> = ({
               visitedPlaceIds.has(place.id) ||
               Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
               Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
+
+            const isTopRecommended = todayOpportunities.length > 0 && todayOpportunities[0].venueId === place.id;
 
             const vId = place.id || (place as any).providerPlaceId || place.name;
             const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(place, hotnessSnapshot.calculatedAt);
@@ -1311,24 +1428,80 @@ export const MapView: React.FC<MapViewProps> = ({
               (exploreMode === 'friends' && !isFriendActive) ||
               (exploreMode === 'quest' && !isQuestActive);
 
-            // Smart Level of Detail: Prominent Badge for Hero/Selected/Hot/Visited/Quest, Crisp Micro-Pin for secondary
-            const isProminentPin =
-              isSelected ||
-              isTrafficSelected ||
-              isVisited ||
-              isHot ||
-              isScout ||
-              isQuest ||
-              isFriendEcho ||
-              isBookmarked ||
-              Boolean((place as any).activeDeal);
+            // Determine pin color and status badge following strict hierarchy:
+            // 1. Selected: Primary Orange #FF6B35 + pulse ring + z-50
+            // 2. Top Recommendation / Scout: Teal #2EC4B6 + 🥇 badge + z-40
+            // 3. Visited: Calm Emerald #059669 + ✓ badge + z-25
+            // 4. Saved: Sky #0284C7 + ★ badge + z-25
+            // 5. Quest: Amber #F59E0B + 🗺️ badge + z-30
+            // 6. Friend Echo: Orange #FF6B35 + 👥 badge + z-30
+            // 7. Hot: #EA580C + 🔥 badge + z-28
+            // 8. Normal Curated: Category Color + category emoji glyph + z-20
+
+            let pinBg = catMeta?.color || '#57534E';
+            let pinBorder = '#FFFFFF';
+            let pinTipBorder = 'border-t-stone-700';
+            let badgeGlyph = catMeta?.symbolGlyph || '🍴';
+            let statusBadge: string | null = null;
+            let statusBadgeBg = '#10B981';
+
+            if (isSelected || isTrafficSelected) {
+              pinBg = '#FF6B35';
+              pinBorder = '#FFFFFF';
+              pinTipBorder = 'border-t-[#FF6B35]';
+            } else if (isTopRecommended || isScout) {
+              pinBg = '#2EC4B6';
+              pinBorder = '#FEF08A';
+              pinTipBorder = 'border-t-[#2EC4B6]';
+              statusBadge = '🥇';
+              statusBadgeBg = '#F59E0B';
+            } else if (isVisited) {
+              pinBg = '#059669';
+              pinBorder = '#FFFFFF';
+              pinTipBorder = 'border-t-[#059669]';
+              statusBadge = '✓';
+              statusBadgeBg = '#059669';
+            } else if (isQuest) {
+              pinBg = '#F59E0B';
+              pinBorder = '#1C1917';
+              pinTipBorder = 'border-t-[#F59E0B]';
+              badgeGlyph = '🗺️';
+            } else if (isFriendEcho) {
+              pinBg = '#FF6B35';
+              pinBorder = '#FFFFFF';
+              pinTipBorder = 'border-t-[#FF6B35]';
+              badgeGlyph = '👥';
+            } else if (isBookmarked) {
+              pinBg = '#0284C7';
+              pinBorder = '#FFFFFF';
+              pinTipBorder = 'border-t-[#0284C7]';
+              statusBadge = '★';
+              statusBadgeBg = '#0284C7';
+            } else if (isHot) {
+              pinBg = '#EA580C';
+              pinBorder = '#FEF08A';
+              pinTipBorder = 'border-t-[#EA580C]';
+              statusBadge = '🔥';
+              statusBadgeBg = '#EF4444';
+            }
+
+            const isNormal =
+              !isSelected &&
+              !isTrafficSelected &&
+              !isTopRecommended &&
+              !isScout &&
+              !isVisited &&
+              !isQuest &&
+              !isFriendEcho &&
+              !isBookmarked &&
+              !isHot;
 
             return (
               <Marker
                 key={place.id}
                 longitude={place.longitude}
                 latitude={place.latitude}
-                anchor={isProminentPin ? 'bottom' : 'center'}
+                anchor="bottom"
                 onClick={(e) => {
                   e.originalEvent.stopPropagation();
                   setSelectedBackgroundPOI(null);
@@ -1337,102 +1510,90 @@ export const MapView: React.FC<MapViewProps> = ({
                 }}
               >
                 <div
-                  className={`relative group cursor-pointer transform hover:scale-120 active:scale-95 transition-all ${
-                    isDimmedInMode ? 'opacity-40 scale-85 z-10' : 'opacity-100 z-20'
+                  className={`relative group cursor-pointer transform hover:scale-115 active:scale-95 transition-all duration-200 ${
+                    isSelected || isTrafficSelected
+                      ? 'opacity-100 z-50 scale-110'
+                      : isVenueSelected
+                      ? 'opacity-25 scale-85 z-10 hover:opacity-85 hover:scale-100 hover:z-30'
+                      : isDimmedInMode
+                      ? 'opacity-30 scale-80 z-10'
+                      : isNormal
+                      ? 'opacity-85 z-20 hover:opacity-100'
+                      : 'opacity-95 z-30 hover:opacity-100'
                   }`}
                   id={`marker-promoted-${place.id}`}
                 >
-                  {/* Outer Pulsing Opportunity Ring */}
+                  {/* Outer Pulsing Active Choice Ring for Selected Place */}
                   {(isSelected || isTrafficSelected) && (
-                    <div className="absolute -inset-2 rounded-full bg-[#FF6B35]/40 animate-ping pointer-events-none"></div>
+                    <div className="absolute -inset-2.5 rounded-full bg-[#FF6B35]/40 animate-ping pointer-events-none"></div>
                   )}
 
-                  {isProminentPin ? (
-                    <>
-                      {/* Marker Pin Head - Prominent Hot vs Visited vs Quest Pin */}
-                      <div
-                        className={`relative flex items-center justify-center rounded-full border-2 transition-all shadow-md ${
-                          isSelected || isTrafficSelected
-                            ? 'w-10 h-10 bg-[#FF6B35] border-white scale-110 shadow-lg text-white ring-4 ring-[#FF6B35]/30'
-                            : isVisited
-                            ? 'w-8 h-8 bg-[#10B981] border-white ring-2 ring-[#10B981]/40 shadow-sm text-white'
-                            : isHot
-                            ? 'w-8.5 h-8.5 bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 border-amber-200 text-white shadow-md ring-2 ring-orange-400/40'
-                            : isScout
-                            ? 'w-8 h-8 bg-[#2EC4B6] border-white text-white'
-                            : isQuest
-                            ? 'w-8 h-8 bg-[#FF9F1C] border-[#2D2926] text-[#2D2926]'
-                            : isFriendEcho
-                            ? 'w-8 h-8 bg-[#FF6B35] border-white text-white'
-                            : isBookmarked
-                            ? 'w-8 h-8 bg-[#00A7CB] border-white text-white shadow-sm'
-                            : 'w-8 h-8 bg-rose-500 border-white text-white shadow-sm'
-                        }`}
+                  {/* Top Recommendation Gợi Ý Ring */}
+                  {!isSelected && isTopRecommended && (
+                    <div className="absolute -inset-1 rounded-full ring-2 ring-amber-400/70 animate-pulse pointer-events-none"></div>
+                  )}
+
+                  {/* Marker Pin Head - Scaled to strict 4-level hierarchy */}
+                  <div
+                    className={`relative flex items-center justify-center rounded-full border transition-all ${
+                      isSelected || isTrafficSelected
+                        ? 'w-10 h-10 border-2 border-white ring-4 ring-[#FF6B35]/35 shadow-lg text-white'
+                        : isTopRecommended || isScout
+                        ? 'w-8.5 h-8.5 border-2 border-amber-200 ring-2 ring-amber-400/50 shadow-md text-white'
+                        : isNormal
+                        ? 'w-6.5 h-6.5 border-[1.5px] border-white/90 shadow-xs text-white'
+                        : 'w-7.5 h-7.5 border-2 border-white shadow-sm text-white'
+                    }`}
+                    style={{
+                      backgroundColor: pinBg,
+                      borderColor: isNormal ? '#FFFFFF' : pinBorder,
+                    }}
+                  >
+                    <span
+                      className={
+                        isSelected || isTrafficSelected
+                          ? 'text-[14px]'
+                          : isTopRecommended || isScout
+                          ? 'text-[12px]'
+                          : isNormal
+                          ? 'text-[10px]'
+                          : 'text-[11.5px]'
+                      }
+                    >
+                      {badgeGlyph}
+                    </span>
+
+                    {/* Status Badge (🥇, ✓, ★, 🔥) */}
+                    {statusBadge && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border border-white flex items-center justify-center text-[8px] text-white font-bold shadow-xs"
+                        style={{ backgroundColor: statusBadgeBg }}
                       >
-                        <span className="text-xs">
-                          {isScout ? '🥇' : isQuest ? '🗺️' : isFriendEcho ? '👥' : catMeta?.symbolGlyph || '🍴'}
-                        </span>
+                        {statusBadge}
+                      </span>
+                    )}
+                  </div>
 
-                        {/* Visited Checkmark Badge */}
-                        {isVisited && (
-                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#10B981] rounded-full border border-white flex items-center justify-center text-[8px] text-white font-bold shadow-xs">
-                            ✓
-                          </span>
-                        )}
+                  {/* Bottom Pin Tip */}
+                  <div
+                    className={`w-0 h-0 mx-auto ${
+                      isSelected || isTrafficSelected
+                        ? 'border-l-[5px] border-r-[5px] border-t-[6px] -mt-0.5'
+                        : isNormal
+                        ? 'border-l-[3px] border-r-[3px] border-t-[4px] -mt-0.5'
+                        : 'border-l-[4px] border-r-[4px] border-t-[5px] -mt-0.5'
+                    } border-l-transparent border-r-transparent ${pinTipBorder}`}
+                  ></div>
 
-                        {/* 24h Hot Flame Accent Badge */}
-                        {isHot && !isSelected && (
-                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 rounded-full border border-white flex items-center justify-center text-[8px] shadow-xs">
-                            🔥
-                          </span>
-                        )}
-
-                        {/* Bookmark Indicator Badge */}
-                        {isBookmarked && !isVisited && !isHot && (
-                          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#00A7CB] rounded-full border border-white flex items-center justify-center">
-                            <span className="text-[8px] text-white">★</span>
-                          </div>
-                        )}
-
-                        {/* Active Deal / Voucher Badge */}
-                        {(place as any).activeDeal && !isVisited && (
-                          <span className="absolute -bottom-1 -left-1 w-3.5 h-3.5 bg-rose-500 rounded-full border border-white flex items-center justify-center text-[7px] shadow-xs text-white" title={`Ưu đãi: ${(place as any).activeDeal.discountLabel}`}>
-                            🎟️
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Bottom Pin Tip */}
-                      <div
-                        className={`w-0 h-0 mx-auto border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] -mt-0.5 ${
-                          isSelected || isTrafficSelected
-                            ? 'border-t-[#FF6B35]'
-                            : isVisited
-                            ? 'border-t-[#10B981]'
-                            : isHot
-                            ? 'border-t-orange-500'
-                            : isScout
-                            ? 'border-t-[#2EC4B6]'
-                            : isQuest
-                            ? 'border-t-[#FF9F1C]'
-                            : isFriendEcho
-                            ? 'border-t-[#FF6B35]'
-                            : isBookmarked
-                            ? 'border-t-[#00A7CB]'
-                            : 'border-t-rose-500'
-                        }`}
-                      ></div>
-                    </>
-                  ) : (
-                    /* Clean, Minimalist Micro Pin for General Venues (Avoids visual clutter) */
-                    <div className="w-4 h-4 rounded-full bg-[#FF6B35] border-2 border-white shadow-xs flex items-center justify-center hover:scale-125 transition-transform">
-                      <div className="w-1 h-1 rounded-full bg-white"></div>
-                    </div>
-                  )}
-
-                  {/* Hover Tooltip */}
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-[#1C1917]/95 backdrop-blur-md text-white font-heading text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md z-40 border border-white/20">
-                    {place.name} {isVisited ? '• Đã ăn ✓' : (place as any).activeDeal ? `• 🎟️ ${(place as any).activeDeal.discountLabel}` : isHot ? `• 🔥 ${hotness.badgeLabel || 'Đang Hot'}` : place.rating ? `• ${place.rating}★` : ''}
+                  {/* Clean Non-Intrusive Tooltip on Hover */}
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-stone-900/95 backdrop-blur-md text-white font-heading text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg z-50 border border-white/15 flex items-center gap-1">
+                    {isTopRecommended && <span className="text-amber-400 font-bold">🥇</span>}
+                    <span>{place.name}</span>
+                    {isVisited ? (
+                      <span className="text-emerald-400 font-bold">✓ Đã ghé</span>
+                    ) : place.rating ? (
+                      <span className="text-amber-400 font-medium">★ {place.rating}</span>
+                    ) : null}
                   </div>
                 </div>
               </Marker>
@@ -1476,6 +1637,7 @@ export const MapView: React.FC<MapViewProps> = ({
           onOpenBiteBot={onOpenBiteBot}
           onOpenTraffic={() => setShowTrafficSheet(true)}
           onOpenComparator={handleOpenComparator}
+          onOpenRoulette={() => setShowRoulette(true)}
           isLoading={isLoadingPOIs}
         />
 
@@ -1507,7 +1669,7 @@ export const MapView: React.FC<MapViewProps> = ({
         />
       </div>
 
-      {/* 3B. Floating "Tìm & Tải quán tại khu vực này" Trigger when user pans away */}
+      {/* 3B. Floating "Khám phá quanh đây" Signature Scan Pill when user pans away */}
       {isPannedFarFromBase && !isVenueSelected && (
         <div className="absolute top-[calc(13rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-fade-in">
           <button
@@ -1523,28 +1685,23 @@ export const MapView: React.FC<MapViewProps> = ({
               }
             }}
             disabled={isAreaSearching || isLoadingPOIs}
-            className="bg-white/96 hover:bg-white text-[#2D2926] active:scale-95 px-4 py-2 rounded-full shadow-[0_6px_24px_rgba(45,41,38,0.18)] border border-stone-200/90 font-heading text-xs font-bold flex items-center gap-2 cursor-pointer transition-all duration-200 group"
+            className="bg-white/96 hover:bg-white text-[#2D2926] active:scale-95 px-4 py-2 rounded-full shadow-[0_6px_24px_rgba(45,41,38,0.14)] border border-stone-200/90 font-heading text-xs font-bold flex items-center gap-2 cursor-pointer transition-all duration-200 group"
             id="btn-load-this-area"
           >
             {isAreaSearching || isLoadingPOIs ? (
               <>
                 <span className="w-3.5 h-3.5 border-2 border-[#FF6B35] border-t-transparent rounded-full animate-spin"></span>
-                <span>Đang quét quán khu vực...</span>
+                <span className="text-stone-700">Đang quét tìm quanh đây...</span>
               </>
             ) : areaSearchLoadedCount !== null ? (
               <>
                 <span className="text-emerald-600 font-bold">✓</span>
-                <span className="text-emerald-700 font-semibold">Đã nạp {areaSearchLoadedCount} quán quanh đây!</span>
+                <span className="text-emerald-700 font-semibold">Đã tìm thấy các quán ngon quanh đây</span>
               </>
             ) : (
               <>
-                <span className="material-symbols-outlined text-[17px] text-[#FF6B35] group-hover:rotate-12 transition-transform">
-                  travel_explore
-                </span>
-                <span>Tìm & nạp quán tại khu vực này</span>
-                <span className="bg-[#FF6B35]/15 text-[#FF6B35] text-[10px] px-1.5 py-0.2 rounded-full font-extrabold">
-                  +50km
-                </span>
+                <span className="text-[#FF6B35] text-xs">✨</span>
+                <span>Khám phá quanh đây</span>
               </>
             )}
           </button>
@@ -1747,192 +1904,181 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* 5. Floating Map Controls (Clean 3-Button Stack: Layers, Roulette, GPS) */}
-      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20 pointer-events-auto items-center">
-        {/* Layer Switcher Trigger Button */}
-        <div className="relative">
-          <button
-            onClick={() => setShowLayerSwitcher((prev) => !prev)}
-            className={`w-10.5 h-10.5 rounded-full shadow-[0_4px_16px_rgba(45,41,38,0.12)] flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
-              showLayerSwitcher
-                ? 'bg-[#2D2926] text-white'
-                : 'bg-white/95 text-[#2D2926] hover:bg-stone-50 border border-stone-200/80'
-            }`}
-            title="Lớp bản đồ"
-            id="btn-map-layer-switcher"
-            aria-label="Lớp bản đồ"
-          >
-            <span className="material-symbols-outlined text-[20px]">layers</span>
-          </button>
-
-          {/* Compact Layer Switcher Popover */}
-          {showLayerSwitcher && (
-            <div
-              className="absolute right-13 top-1/2 -translate-y-1/2 w-64 bg-white/95 backdrop-blur-md rounded-2xl p-3 border border-[#2D2926]/10 shadow-[0_8px_30px_rgba(45,41,38,0.18)] z-30 animate-fade-in flex flex-col gap-2"
-              id="map-layer-switcher-popover"
-            >
-              <div className="flex items-center justify-between pb-1.5 border-b border-[#2D2926]/8">
-                <span className="font-heading text-xs font-bold text-[#2D2926] flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[16px] text-[#FF6B35]">layers</span>
-                  Lớp bản đồ
-                </span>
-                <button
-                  onClick={() => setShowLayerSwitcher(false)}
-                  className="text-xs text-[#8D7168] hover:text-[#2D2926] p-1 rounded-full hover:bg-[#F4F4F0] cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                {/* 1. FOG OF WAR RPG MODE (Innovative Mystery Explorer) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectMapMode('fog_of_war')}
-                  className={`flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
-                    mapMode === 'fog_of_war'
-                      ? 'bg-sky-500/15 border-2 border-sky-500 text-[#2D2926]'
-                      : 'bg-[#FAF9F5] border border-[#2D2926]/5 hover:bg-[#F4F4F0] text-[#594139]'
-                  }`}
-                  id="layer-opt-fog"
-                  title="Chế độ Sương Mù Khám Phá RPG"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-950 text-sky-400 flex items-center justify-center text-base shadow-xs">
-                      🌫️
-                    </div>
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-heading text-xs font-bold text-[#2D2926]">Sương Mù RPG</span>
-                        <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-sky-100 text-sky-800">
-                          Sáng tạo
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-[#8D7168]">
-                        Mở sáng từng góc phố & săn quán ẩn
-                      </span>
-                    </div>
-                  </div>
-                  {mapMode === 'fog_of_war' && (
-                    <span className="material-symbols-outlined text-sky-600 text-[18px]">check_circle</span>
-                  )}
-                </button>
-
-                {/* 2. STREET MODE (OpenFreeMap Liberty) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectMapMode('street')}
-                  className={`flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
-                    mapMode === 'street'
-                      ? 'bg-[#FF6B35]/10 border-2 border-[#FF6B35] text-[#2D2926]'
-                      : 'bg-[#FAF9F5] border border-[#2D2926]/5 hover:bg-[#F4F4F0] text-[#594139]'
-                  }`}
-                  id="layer-opt-street"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-100/80 flex items-center justify-center text-base">
-                      🗺️
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="font-heading text-xs font-bold text-[#2D2926]">Đường phố</span>
-                      <span className="text-[10px] text-[#8D7168]">OpenFreeMap Liberty</span>
-                    </div>
-                  </div>
-                  {mapMode === 'street' && (
-                    <span className="material-symbols-outlined text-[#FF6B35] text-[18px]">check_circle</span>
-                  )}
-                </button>
-
-                {/* 3. SATELLITE MODE */}
-                {(() => {
-                  const hasToken = isEsriTokenConfigured();
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectMapMode('satellite')}
-                      className={`flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
-                        mapMode === 'satellite'
-                          ? 'bg-[#FF6B35]/10 border-2 border-[#FF6B35] text-[#2D2926]'
-                          : 'bg-[#FAF9F5] border border-[#2D2926]/5 hover:bg-[#F4F4F0] text-[#594139]'
-                      }`}
-                      id="layer-opt-satellite"
-                      title="Chuyển sang ảnh vệ tinh Esri World Imagery"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-blue-100/80 flex items-center justify-center text-base">
-                          🛰️
-                        </div>
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-heading text-xs font-bold text-[#2D2926]">Vệ tinh</span>
-                            <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-100 text-emerald-800">
-                              {hasToken ? 'Esri ArcGIS HD' : 'Esri World Imagery'}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-[#8D7168]">
-                            Ảnh vệ tinh toàn cầu độ nét cao
-                          </span>
-                        </div>
-                      </div>
-                      {mapMode === 'satellite' && (
-                        <span className="material-symbols-outlined text-[#FF6B35] text-[18px]">check_circle</span>
-                      )}
-                    </button>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 🚦 Traffic-Smart Avoid Congestion Floating Trigger */}
-        <button
-          type="button"
-          onClick={() => setShowTrafficSheet(true)}
-          className={`w-10.5 h-10.5 rounded-full shadow-[0_4px_16px_rgba(16,185,129,0.35)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white group relative ${
-            selectedTrafficRoute ? 'bg-gradient-to-br from-emerald-500 to-teal-700 ring-2 ring-emerald-400' : 'bg-gradient-to-br from-emerald-600 to-emerald-800'
-          }`}
-          title="Tránh Tắc Đường, Mưa & Cảnh Báo Ngập Lụt"
-          id="btn-traffic-smart-navigator"
-        >
-          <span className="text-lg group-hover:scale-110 transition-transform">🚦</span>
-          {selectedTrafficRoute && (
-            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white animate-pulse"></span>
-          )}
-        </button>
-
-        {/* ⚖️ Smart Venue & Multi-Route Comparator Floating Trigger */}
-        <button
-          type="button"
-          onClick={() => handleOpenComparator()}
-          className="w-10.5 h-10.5 bg-gradient-to-br from-amber-600 to-orange-700 rounded-full shadow-[0_4px_16px_rgba(217,119,6,0.4)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white group relative"
-          title="So sánh quán & tối ưu lộ trình né kẹt xe"
-          id="btn-smart-comparator"
-        >
-          <span className="text-lg group-hover:scale-110 transition-transform">⚖️</span>
-        </button>
-
-        {/* 🎲 Bite Roulette Floating Trigger */}
+      {/* 5. Floating Map Controls (Quiet & Distinctive Floating Dock) */}
+      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex flex-col gap-2.5 z-20 pointer-events-auto items-end">
+        {/* Signature Interaction: 🎲 Hôm nay ăn gì? (Tactile, Delightful Trigger) */}
         <button
           type="button"
           onClick={() => setShowRoulette(true)}
-          className="w-10.5 h-10.5 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full shadow-[0_4px_16px_rgba(245,158,11,0.35)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white group relative"
-          title="Ăn gì hôm nay? (Vòng quay ẩm thực)"
+          className="group bg-gradient-to-r from-amber-500 via-orange-500 to-[#FF6B35] hover:brightness-105 active:scale-95 text-white py-2 px-3 rounded-2xl shadow-[0_4px_18px_rgba(255,107,53,0.38)] border border-white/40 transition-all cursor-pointer flex items-center gap-1.5 select-none"
+          title="Ăn gì hôm nay? (Lắc xúc xắc gợi ý quán ngon)"
           id="btn-bite-roulette"
         >
-          <span className="text-lg group-hover:rotate-45 transition-transform duration-300">🎲</span>
+          <span className="text-base group-hover:rotate-45 transition-transform duration-300">🎲</span>
+          <span className="hidden sm:inline font-heading text-xs font-bold tracking-tight">Hôm nay ăn gì?</span>
         </button>
+
+        {/* Quiet Smart Tools Cluster (Frosted Capsule) */}
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_4px_20px_rgba(45,41,38,0.12)] border border-stone-200/90 p-1 flex flex-col gap-1 items-center">
+          {/* 🚦 Traffic & Rain/Flood Route Navigator */}
+          <button
+            type="button"
+            onClick={() => setShowTrafficSheet(true)}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer relative group ${
+              selectedTrafficRoute
+                ? 'bg-emerald-50 text-emerald-700 font-bold border border-emerald-300'
+                : 'text-stone-700 hover:bg-stone-100/80 hover:text-stone-950'
+            }`}
+            title="Né tắc đường, mưa & cảnh báo ngập lụt"
+            id="btn-traffic-smart-navigator"
+            aria-label="Né tắc đường"
+          >
+            <span className="text-base group-hover:scale-110 transition-transform">🚦</span>
+            {selectedTrafficRoute && (
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            )}
+          </button>
+
+          {/* ⚖️ Smart Multi-Venue Comparator */}
+          <button
+            type="button"
+            onClick={() => handleOpenComparator()}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-stone-700 hover:bg-stone-100/80 hover:text-stone-950 transition-all cursor-pointer group"
+            title="So sánh quán & tối ưu lộ trình né kẹt xe"
+            id="btn-smart-comparator"
+            aria-label="So sánh quán"
+          >
+            <span className="text-base group-hover:scale-110 transition-transform">⚖️</span>
+          </button>
+
+          {/* 🗺️ Map Layers Trigger */}
+          <div className="relative">
+            <button
+              onClick={() => setShowLayerSwitcher((prev) => !prev)}
+              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                showLayerSwitcher
+                  ? 'bg-stone-900 text-white'
+                  : 'text-stone-700 hover:bg-stone-100/80 hover:text-stone-950'
+              }`}
+              title="Lớp bản đồ"
+              id="btn-map-layer-switcher"
+              aria-label="Lớp bản đồ"
+            >
+              <span className="material-symbols-outlined text-[18px]">layers</span>
+            </button>
+
+            {/* Compact Layer Switcher Popover */}
+            {showLayerSwitcher && (
+              <div
+                className="absolute right-12 top-1/2 -translate-y-1/2 w-60 bg-white/98 backdrop-blur-md rounded-2xl p-3 border border-stone-200/90 shadow-[0_8px_30px_rgba(45,41,38,0.18)] z-40 animate-fade-in flex flex-col gap-2"
+                id="map-layer-switcher-popover"
+              >
+                <div className="flex items-center justify-between pb-1.5 border-b border-stone-100">
+                  <span className="font-heading text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-[#FF6B35]">layers</span>
+                    Lớp bản đồ
+                  </span>
+                  <button
+                    onClick={() => setShowLayerSwitcher(false)}
+                    className="text-xs text-stone-400 hover:text-stone-700 p-1 rounded-full hover:bg-stone-100 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  {/* 1. FOG OF WAR RPG MODE */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMapMode('fog_of_war')}
+                    className={`flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
+                      mapMode === 'fog_of_war'
+                        ? 'bg-sky-50 border border-sky-400 text-stone-900'
+                        : 'bg-stone-50/70 border border-stone-100 hover:bg-stone-100 text-stone-700'
+                    }`}
+                    id="layer-opt-fog"
+                    title="Chế độ Sương Mù Khám Phá RPG"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-950 text-sky-400 flex items-center justify-center text-sm">
+                        🌫️
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-heading text-xs font-bold text-stone-900">Sương Mù RPG</span>
+                        <span className="text-[10px] text-stone-500">Mở sáng từng góc phố</span>
+                      </div>
+                    </div>
+                    {mapMode === 'fog_of_war' && (
+                      <span className="material-symbols-outlined text-sky-600 text-[16px]">check_circle</span>
+                    )}
+                  </button>
+
+                  {/* 2. STREET MODE */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMapMode('street')}
+                    className={`flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
+                      mapMode === 'street'
+                        ? 'bg-orange-50 border border-[#FF6B35] text-stone-900'
+                        : 'bg-stone-50/70 border border-stone-100 hover:bg-stone-100 text-stone-700'
+                    }`}
+                    id="layer-opt-street"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100/80 flex items-center justify-center text-sm">
+                        🗺️
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-heading text-xs font-bold text-stone-900">Đường phố</span>
+                        <span className="text-[10px] text-stone-500">Bản đồ chuẩn rõ nét</span>
+                      </div>
+                    </div>
+                    {mapMode === 'street' && (
+                      <span className="material-symbols-outlined text-[#FF6B35] text-[16px]">check_circle</span>
+                    )}
+                  </button>
+
+                  {/* 3. SATELLITE MODE */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMapMode('satellite')}
+                    className={`flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
+                      mapMode === 'satellite'
+                        ? 'bg-blue-50 border border-blue-500 text-stone-900'
+                        : 'bg-stone-50/70 border border-stone-100 hover:bg-stone-100 text-stone-700'
+                    }`}
+                    id="layer-opt-satellite"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-sm">
+                        🛰️
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-heading text-xs font-bold text-stone-900">Vệ tinh</span>
+                        <span className="text-[10px] text-stone-500">Ảnh vệ tinh độ nét cao</span>
+                      </div>
+                    </div>
+                    {mapMode === 'satellite' && (
+                      <span className="material-symbols-outlined text-blue-600 text-[16px]">check_circle</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Re-Center GPS Button */}
         <button
           onClick={handleMyLocationClick}
-          className="w-10.5 h-10.5 bg-white/95 rounded-full shadow-[0_4px_16px_rgba(45,41,38,0.12)] flex items-center justify-center text-[#2D2926] hover:bg-stone-50 border border-stone-200/80 active:scale-95 transition-all cursor-pointer"
+          className="w-10 h-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_4px_16px_rgba(45,41,38,0.12)] flex items-center justify-center text-stone-800 hover:bg-stone-50 border border-stone-200/90 active:scale-95 transition-all cursor-pointer"
           title={hasRealLocation ? 'Vị trí của bạn' : 'Định vị GPS'}
           id="btn-my-location"
+          aria-label="Định vị GPS"
         >
           <span
-            className={`material-symbols-outlined text-[20px] ${
-              hasRealLocation ? 'text-[#FF6B35]' : 'text-[#8D7168]'
+            className={`material-symbols-outlined text-[19px] ${
+              hasRealLocation ? 'text-[#FF6B35]' : 'text-stone-500'
             }`}
           >
             my_location
@@ -2164,7 +2310,6 @@ export const MapView: React.FC<MapViewProps> = ({
 
         const vId = activePlace.id || (activePlace as any).providerPlaceId || activePlace.name;
         const placeHotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(activePlace, hotnessSnapshot.calculatedAt);
-        const deal = (activePlace as any).activeDeal;
 
         return (
           <div
@@ -2264,47 +2409,6 @@ export const MapView: React.FC<MapViewProps> = ({
                     <span className="truncate">
                       <strong>📰 {placeHotness.pressMention.source}:</strong> <span className="italic">"{placeHotness.pressMention.headline}"</span>
                     </span>
-                  </div>
-                )}
-
-                {/* 🎟️ Compact Active Deal Voucher */}
-                {deal && (
-                  <div className="bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-200/80 rounded-xl p-2 flex items-center justify-between gap-2 shadow-2xs">
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs">🎟️</span>
-                        <strong className="text-[11px] font-heading font-bold text-rose-900 truncate">
-                          {deal.title}
-                        </strong>
-                        <span className="bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0">
-                          {deal.discountLabel}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-stone-500 truncate mt-0.5">
-                        Mã: <strong className="font-mono text-rose-700">{deal.code}</strong> • {deal.description}
-                      </span>
-                    </div>
-
-                    {deal.code && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (navigator?.clipboard?.writeText) {
-                            navigator.clipboard.writeText(deal.code);
-                          }
-                          setCopiedDealCode(deal.code);
-                          setTimeout(() => setCopiedDealCode(null), 2500);
-                        }}
-                        className={`px-2.5 py-1 rounded-lg text-[10.5px] font-heading font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
-                          copiedDealCode === deal.code
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-rose-600 hover:bg-rose-700 text-white active:scale-95'
-                        }`}
-                        id="btn-copy-deal-code"
-                      >
-                        {copiedDealCode === deal.code ? '✓ Đã lưu' : 'Copy mã'}
-                      </button>
-                    )}
                   </div>
                 )}
 
@@ -2494,6 +2598,15 @@ export const MapView: React.FC<MapViewProps> = ({
           >
             © Esri, Maxar, Earthstar Geographics
           </a>
+        ) : isStyleFallbackActive ? (
+          <a
+            href="https://carto.com/attributions"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline hover:text-[#FF6B35]"
+          >
+            © CARTO (Fallback)
+          </a>
         ) : (
           <a
             href="https://openfreemap.org"
@@ -2521,6 +2634,8 @@ export const MapView: React.FC<MapViewProps> = ({
         isOpen={showRoulette}
         onClose={() => setShowRoulette(false)}
         places={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
+        savedPlaceIds={savedPlaceIds}
+        userLocation={referenceLocation}
         onSelectPlace={(p) => {
           handleFlyTo(p.latitude, p.longitude, 16.5);
           onSelectPlace(p);

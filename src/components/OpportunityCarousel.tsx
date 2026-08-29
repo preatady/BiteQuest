@@ -105,7 +105,7 @@ export const OpportunityCarousel: React.FC<OpportunityCarouselProps> = ({
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 bg-[#2D2926]/90 backdrop-blur-md px-3 py-1 rounded-full text-white text-[11px] font-heading font-bold shadow-sm">
             <span>✨</span>
-            <span>{displayOpps.length} nơi đáng đi · Gợi ý Radar</span>
+            <span>Có gì đáng ghé quanh đây?</span>
           </div>
 
           {/* Quick desktop/touch left/right navigation arrows */}
@@ -250,22 +250,11 @@ export const OpportunityCarousel: React.FC<OpportunityCarouselProps> = ({
                   <h4 className="font-heading text-sm font-bold text-[#2D2926] line-clamp-1">
                     {place.name}
                   </h4>
-                  {(place as any).activeDeal && (
-                    <span className="bg-rose-50 border border-rose-300 text-rose-700 font-heading text-[9px] font-extrabold px-1.5 py-0.5 rounded-md shrink-0 flex items-center gap-0.5 shadow-2xs">
-                      <span>🎟️</span>
-                      <span>{(place as any).activeDeal.discountLabel}</span>
-                    </span>
-                  )}
                 </div>
                 <div className="flex items-center justify-between gap-1 text-[11px] text-[#594139]/80 font-medium">
                   <p className="truncate">
                     {place.categoryLabel || place.district}
                   </p>
-                  {(place as any).activeDeal?.code && (
-                    <span className="font-mono text-[9.5px] font-bold text-rose-700 bg-rose-50/80 px-1 rounded border border-rose-200 shrink-0">
-                      {(place as any).activeDeal.code}
-                    </span>
-                  )}
                 </div>
               </div>
 
