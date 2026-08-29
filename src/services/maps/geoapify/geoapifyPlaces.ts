@@ -3,6 +3,7 @@ import { GeoapifyPlaceFeatureSchema } from './geoapifyTypes';
 import { getDistance } from 'geolib';
 import { INITIAL_PLACES } from '../../../data/seedData';
 import { classifyVenue, CANONICAL_CATEGORIES } from '../categoryNormalizer';
+import { isFoodOrVenueFeature } from '../vectorTileScanner';
 
 interface CacheEntry {
   timestamp: number;
@@ -149,6 +150,8 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
         'catering.pub',
         'commercial.food_and_drink.bakery',
         'commercial.food_and_drink.confectionery',
+        'commercial.supermarket',
+        'commercial.food_and_drink',
       ].join(',');
 
       const url = `https://api.geoapify.com/v2/places?categories=${categories}&filter=circle:${longitude},${latitude},${radiusMeters}&bias=proximity:${longitude},${latitude}&limit=${limit}&apiKey=${effectiveKey}`;
@@ -218,19 +221,20 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
           };
         });
 
-      // Sort by actual distance
-      results.sort((a, b) => (a.distanceMeters || 0) - (b.distanceMeters || 0));
+      // Filter with isFoodOrVenueFeature and sort by actual distance
+      const sanitized = results.filter((p) => isFoodOrVenueFeature(p));
+      sanitized.sort((a, b) => (a.distanceMeters || 0) - (b.distanceMeters || 0));
 
       // Cache results
       this.cache.push({
         timestamp: now,
         latitude,
         longitude,
-        places: results,
+        places: sanitized,
       });
       if (this.cache.length > 20) this.cache.shift();
 
-      return results.slice(0, limit);
+      return sanitized.slice(0, limit);
     } catch {
       return this.fetchFromOverpassOrLocal(latitude, longitude, radiusMeters, limit);
     }
@@ -263,6 +267,10 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
       'sushi',
       'che',
       'bakery',
+      'sieu thi',
+      'bach hoa',
+      'winmart',
+      'circle k',
     ];
     try {
       const photonPromises = photonQueries.map(async (q) => {
@@ -292,8 +300,13 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
           const osmKey = p.osm_key || 'amenity';
           const osmVal = p.osm_value || 'restaurant';
 
-          // Reject non-food amenities (schools, hospitals, banks, etc.)
+          // Reject non-food amenities & traffic/infrastructure
           const nonFoodOsmValues = [
+            'swimming_pool',
+            'swimming',
+            'pool',
+            'embassy',
+            'diplomatic',
             'school',
             'kindergarten',
             'university',
@@ -314,17 +327,32 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
             'sports_centre',
             'pitch',
             'cemetery',
+            'junction',
+            'intersection',
+            'traffic_signals',
+            'crossing',
+            'highway',
+            'road',
+            'street',
+            'bus_stop',
+            'bridge',
+            'tunnel',
           ];
           if (nonFoodOsmValues.includes(osmVal) || nonFoodOsmValues.includes(osmKey)) continue;
 
-          // Reject non-food names
+          // Reject road, intersection, or non-food names
           if (
-            /(?:trường\s+(?:tiểu\s+học|trung\s+học|thcs|thpt|đại\s+học|cao\s+đẳng|mầm\s+non|mẫu\s+giáo)|thpt|thcs|bệnh\s+viện|phòng\s+khám|trạm\s+y\s+tế|ủy\s+ban|ubnd|công\s+an|ngân\s+hàng|trụ\s+sở|chùa\s+|đền\s+|đình\s+|nhà\s+thờ\s+|nghĩa\s+trang|sân\s+bóng|sân\s+vận\s+động|bến\s+xe|nhà\s+ga)/i.test(
+            /^(đường|phố|ngõ|ngách|hẻm|quốc lộ|ql|tỉnh lộ|đt|tòa nhà|khu đô thị|ct\d+|km\d+|vành đai)/i.test(p.name) ||
+            /(?:ngã\s+(?:tư|ba|bảy|sáu|năm|4|3|5|6|7)|qua\s+ngã|qua\s+cầu|qua\s+nút|nút\s+giao|giao\s+lộ|vòng\s+xuyến|bùng\s+binh|vòng\s+xoay|cầu\s+vượt|hầm\s+chui|trục\s+đường|trục\s+[a-z]|đoạn\s+đường|tuyến\s+đường|điểm\s+giao|dải\s+phân\s+cách|vỉa\s+hè|lề\s+đường|nhà\s+chờ\s+xe|điểm\s+dừng\s+xe|trạm\s+xe\s+buýt|bến\s+xe\s+buýt|bus\s+stop|trạm\s+thu\s+phí|trạm\s+biến\s+áp)/i.test(
               p.name
-            ) &&
-            !/(?:căng\s+tin|quán|cà\s+phê|cafe|cơm|bún|phở|bánh)/i.test(p.name)
+            ) ||
+            /(?:bể\s+bơi|hồ\s+bơi|swimming|đại\s+sứ\s+quán|embassy|lãnh\s+sự|trường\s+(?:tiểu\s+học|trung\s+học|thcs|thpt|đại\s+học|cao\s+đẳng|mầm\s+non|mẫu\s+giáo)|thpt|thcs|bệnh\s+viện|phòng\s+khám|trạm\s+y\s+tế|nha\s+khoa|ủy\s+ban|ubnd|công\s+an|ngân\s+hàng|trụ\s+sở|chùa\s+|đền\s+|đình\s+|nhà\s+thờ\s+|nghĩa\s+trang|sân\s+bóng|sân\s+vận\s+động|sân\s+tennis|phòng\s+gym|fitness|bến\s+xe|nhà\s+ga|trạm\s+xăng|khách\s+sạn)/i.test(
+              p.name
+            )
           ) {
-            continue;
+            if (!/(?:quán\s+ăn|nhà\s+hàng|tiệm\s+ăn|cà\s+phê|cafe|bún|phở|bánh\s+mì|lẩu|nướng|trà\s+sữa|siêu\s+thị|winmart|circle\s+k|gs25|7\s*eleven)/i.test(p.name)) {
+              continue;
+            }
           }
 
           const classification = classifyVenue({
@@ -359,7 +387,8 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
       const overpassQuery = `[out:json][timeout:7];(
         node["amenity"~"restaurant|cafe|fast_food|bar|pub|ice_cream|food_court|biergarten"](around:${effectiveRadius},${latitude},${longitude});
         way["amenity"~"restaurant|cafe|fast_food|bar|pub|ice_cream|food_court|biergarten"](around:${effectiveRadius},${latitude},${longitude});
-        node["shop"~"bakery|confectionery|coffee|tea|deli"](around:${effectiveRadius},${latitude},${longitude});
+        node["shop"~"bakery|confectionery|coffee|tea|deli|supermarket|convenience|grocery|greengrocer"](around:${effectiveRadius},${latitude},${longitude});
+        way["shop"~"supermarket|convenience|grocery"](around:${effectiveRadius},${latitude},${longitude});
       );out center body ${limit};`;
 
       const mirrors = [
@@ -383,6 +412,22 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
               for (const el of data.elements) {
                 const name = el.tags?.name || el.tags?.['name:vi'] || el.tags?.['name:en'];
                 if (!name || String(name).trim().length === 0) continue;
+                const cleanName = String(name).trim();
+
+                // Reject road, intersection, or non-food infrastructure names
+                if (
+                  /^(đường|phố|ngõ|ngách|hẻm|quốc lộ|ql|tỉnh lộ|đt|tòa nhà|khu đô thị|ct\d+|km\d+|vành đai)/i.test(cleanName) ||
+                  /(?:ngã\s+(?:tư|ba|bảy|sáu|năm|4|3|5|6|7)|qua\s+ngã|qua\s+cầu|qua\s+nút|nút\s+giao|giao\s+lộ|vòng\s+xuyến|bùng\s+binh|vòng\s+xoay|cầu\s+vượt|hầm\s+chui|trục\s+đường|trục\s+[a-z]|đoạn\s+đường|tuyến\s+đường|điểm\s+giao|dải\s+phân\s+cách|vỉa\s+hè|lề\s+đường|nhà\s+chờ\s+xe|điểm\s+dừng\s+xe|trạm\s+xe\s+buýt|bến\s+xe\s+buýt|bus\s+stop|trạm\s+thu\s+phí|trạm\s+biến\s+áp)/i.test(
+                    cleanName
+                  ) ||
+                  /(?:bể\s+bơi|hồ\s+bơi|swimming|đại\s+sứ\s+quán|embassy|lãnh\s+sự|trường\s+(?:tiểu\s+học|trung\s+học|thcs|thpt|đại\s+học|cao\s+đẳng|mầm\s+non|mẫu\s+giáo)|thpt|thcs|bệnh\s+viện|phòng\s+khám|trạm\s+y\s+tế|nha\s+khoa|ủy\s+ban|ubnd|công\s+an|ngân\s+hàng|trụ\s+sở|chùa\s+|đền\s+|đình\s+|nhà\s+thờ\s+|nghĩa\s+trang|sân\s+bóng|sân\s+vận\s+động|sân\s+tennis|phòng\s+gym|fitness|bến\s+xe|nhà\s+ga|trạm\s+xăng|khách\s+sạn)/i.test(
+                    cleanName
+                  )
+                ) {
+                  if (!/(?:quán\s+ăn|nhà\s+hàng|tiệm\s+ăn|cà\s+phê|cafe|bún|phở|bánh\s+mì|lẩu|nướng|trà\s+sữa|siêu\s+thị|winmart|circle\s+k|gs25|7\s*eleven)/i.test(cleanName)) {
+                    continue;
+                  }
+                }
 
                 const lat = typeof el.lat === 'number' ? el.lat : el.center?.lat;
                 const lon = typeof el.lon === 'number' ? el.lon : el.center?.lon;
@@ -449,7 +494,7 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
     }
 
     const uniqueResults = Array.from(finalMap.values())
-      .filter((p) => (p.distanceMeters ?? Infinity) <= effectiveRadius)
+      .filter((p) => isFoodOrVenueFeature(p) && (p.distanceMeters ?? Infinity) <= effectiveRadius)
       .sort((a, b) => (a.distanceMeters || 0) - (b.distanceMeters || 0));
 
     return uniqueResults.slice(0, limit);

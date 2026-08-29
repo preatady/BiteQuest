@@ -18,17 +18,43 @@ export function isFoodOrVenueFeature(properties: any, layerId?: string): boolean
 
   if (!rawName || rawName.length < 2) return false;
 
-  // Ignore pure road names, numbers, administrative boundaries, or public civil infrastructure (schools, hospitals, etc.)
-  if (/^(đường|phố|ngõ|ngách|quốc lộ|ql|tỉnh lộ|đt|tòa nhà|khu đô thị|ct\d+|km\d+)/i.test(rawName)) {
-    return false;
+  const lowerName = rawName.toLowerCase();
+  const unaccented = lowerName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // 1. Strictly exclude Corporate, Telecom, Industrial, Enterprise, Military, Government, Office, and Factory entities
+  if (
+    /(?:tập\s+đoàn|tap\s+doan|tổng\s+công\s+ty|tong\s+cong\s+ty|công\s+ty|cong\s+ty|doanh\s+nghiệp|doanh\s+nghiep|viễn\s+thông|vien\s+thong|công\s+nghiệp|cong\s+nghiep|quân\s+đội|quan\s+doi|bộ\s+quốc\s+phòng|bộ\s+công\s+an|viettel|vnpt|mobifone|vinaphone|fpt\s+tower|fpt\s+software|cmc\s+tower|keangnam|lotte\s+center|tòa\s+nhà|toa\s+nha|building|tower|corporation|telecom|enterprise|factory|nhà\s+máy|xí\s+nghiệp|kho\s+xưởng|khu\s+công\s+nghiệp|cổ\s+phần|tnhh|jsc|ltd|holdings?|group|văn\s+phòng|van\s+phong|trụ\s+sở|tru\s+so|cơ\s+quan|co\s+quan|viện\s+nghiên\s+cứu|ban\s+quản\s+lý|bưu\s+cục|bưu\s+điện)/i.test(
+      lowerName
+    ) ||
+    /(?:tap\s+doan|cong\s+ty|tong\s+cong\s+ty|vien\s+thong|cong\s+nghiep|quan\s+doi|tru\s+so|van\s+phong|co\s+quan|toa\s+nha|building|tower|telecom|corporation)/i.test(
+      unaccented
+    )
+  ) {
+    // Only allow if it's explicitly an internal canteen / food service
+    if (!/(?:căng\s+tin|cang\s+tin|nhà\s+ăn|nha\s+an|quán\s+ăn|quan\s+an|tiệm\s+ăn|tiem\s+an|cà\s+phê|cafe|bún|phở|bánh\s+mì|lẩu|nướng|trà\s+sữa|siêu\s+thị|winmart|circle\s+k|gs25|7\s*eleven)/i.test(lowerName)) {
+      return false;
+    }
   }
 
-  // Strictly exclude non-food facilities like schools, hospitals, offices, temples, sports facilities
+  // 2. Ignore pure road names, numbers, administrative boundaries, intersections, traffic junctions, or civil infrastructure
   if (
-    /(?:trường\s+(?:tiểu\s+học|trung\s+học|thcs|thpt|đại\s+học|cao\s+đẳng|mầm\s+non|mẫu\s+giáo)|thpt|thcs|bệnh\s+viện|phòng\s+khám|trạm\s+y\s+tế|ủy\s+ban|ubnd|công\s+an|ngân\s+hàng|trụ\s+sở|chùa\s+|đền\s+|đình\s+|nhà\s+thờ\s+|nghĩa\s+trang|sân\s+bóng|sân\s+vận\s+động|bến\s+xe|nhà\s+ga)/i.test(
+    /^(đường|phố|ngõ|ngách|hẻm|quốc lộ|ql|tỉnh lộ|đt|tòa nhà|khu đô thị|ct\d+|km\d+|vành đai)/i.test(rawName) ||
+    /(?:ngã\s+(?:tư|ba|bảy|sáu|năm|4|3|5|6|7)|qua\s+ngã|qua\s+cầu|qua\s+nút|nút\s+giao|giao\s+lộ|vòng\s+xuyến|bùng\s+binh|vòng\s+xoay|cầu\s+vượt|hầm\s+chui|trục\s+đường|trục\s+[a-z]|đoạn\s+đường|tuyến\s+đường|điểm\s+giao|dải\s+phân\s+cách|vỉa\s+hè|lề\s+đường|nhà\s+chờ\s+xe|điểm\s+dừng\s+xe|trạm\s+xe\s+buýt|bến\s+xe\s+buýt|bus\s+stop|trạm\s+thu\s+phí|trạm\s+biến\s+áp)/i.test(
+      rawName
+    )
+  ) {
+    // Only allow if it's explicitly named as a food place (e.g. "Quán Ăn Ngã Tư")
+    if (!/(?:quán\s+ăn|nhà\s+hàng|tiệm\s+ăn|cà\s+phê|cafe|bún|phở|bánh\s+mì|lẩu|nướng|trà\s+sữa|siêu\s+thị|winmart|circle\s+k|gs25|7\s*eleven)/i.test(rawName)) {
+      return false;
+    }
+  }
+
+  // 3. Strictly exclude non-food facilities (swimming pools, embassies, schools, hospitals, offices, temples, sports, banks, etc.)
+  if (
+    /(?:bể\s+bơi|hồ\s+bơi|swimming\s+pool|clb\s+bơi|bơi\s+lội|đại\s+sứ\s+quán|embassy|lãnh\s+sự\s+quán|consulate|trường\s+(?:tiểu\s+học|trung\s+học|thcs|thpt|đại\s+học|cao\s+đẳng|mầm\s+non|mẫu\s+giáo)|thpt|thcs|bệnh\s+viện|phòng\s+khám|trạm\s+y\s+tế|nha\s+khoa|nhà\s+thuốc|hiệu\s+thuốc|ủy\s+ban|ubnd|công\s+an|cảnh\s+sát|ngân\s+hàng|trụ\s+sở|chùa\s+|đền\s+|đình\s+|miếu\s+|nhà\s+thờ\s+|nghĩa\s+trang|sân\s+bóng|sân\s+vận\s+động|sân\s+tennis|sân\s+golf|sân\s+cầu\s+lông|phòng\s+gym|fitness|yoga|bida|bi-a|bến\s+xe|nhà\s+ga|sân\s+bay|bãi\s+đỗ\s+xe|bãi\s+giữ\s+xe|gara|trạm\s+xăng|cây\s+xăng|sửa\s+xe|rửa\s+xe|thời\s+trang|quần\s+áo|shop\s+quần\s+áo|giày\s+dép|mỹ\s+phẩm|tiệm\s+vàng|cắt\s+tóc|salon|spa|massage|thẩm\s+mỹ|giặt\s+là|khách\s+sạn|nhà\s+nghỉ|homestay)/i.test(
       rawName
     ) &&
-    !/(?:căng\s+tin|quán|cà\s+phê|cafe|cơm|bún|phở|bánh)/i.test(rawName)
+    !/(?:căng\s+tin|quán\s+ăn|nhà\s+hàng|tiệm\s+ăn|cà\s+phê|cafe|cơm|bún|phở|bánh|siêu\s+thị|bách\s+hóa|winmart|circle\s+k|gs25|7\s*eleven)/i.test(rawName)
   ) {
     return false;
   }
@@ -43,32 +69,115 @@ export function isFoodOrVenueFeature(properties: any, layerId?: string): boolean
     properties.type ||
     properties.maki ||
     properties.kind ||
+    properties.office ||
     layerId ||
     ''
   ).toLowerCase();
 
-  // Exclude non-food amenity / class types from OSM & Vector tiles
+  // Exclude non-food amenity / office / infrastructure types from OSM & Vector tiles
   const nonFoodClasses = [
+    'office',
+    'company',
+    'telecommunication',
+    'telecom',
+    'industrial',
+    'corporate',
+    'commercial.office',
+    'commercial.industrial',
+    'commercial.telecom',
+    'coworking',
+    'administrative',
+    'government',
+    'embassy',
+    'diplomatic',
+    'consulate',
+    'swimming_pool',
+    'swimming',
+    'pool',
+    'water_park',
     'school',
     'kindergarten',
     'university',
     'college',
+    'library',
+    'driving_school',
     'hospital',
     'clinic',
+    'doctors',
     'pharmacy',
+    'dentist',
+    'veterinary',
     'bank',
+    'atm',
+    'bureau_de_change',
     'police',
     'place_of_worship',
+    'church',
+    'mosque',
+    'synagogue',
+    'temple',
+    'shrine',
+    'cemetery',
+    'grave_yard',
     'fuel',
     'parking',
+    'parking_space',
+    'parking_entrance',
     'post_office',
     'townhall',
+    'town_hall',
     'courthouse',
     'fire_station',
+    'prison',
     'stadium',
     'sports_centre',
     'pitch',
-    'cemetery',
+    'track',
+    'fitness_centre',
+    'sports_hall',
+    'gym',
+    'car_repair',
+    'car_wash',
+    'charging_station',
+    'hotel',
+    'motel',
+    'hostel',
+    'guest_house',
+    'clothing',
+    'clothes',
+    'fashion',
+    'shoes',
+    'hairdresser',
+    'beauty',
+    'spa',
+    'optician',
+    'jewelry',
+    'jewellery',
+    'chemist',
+    'tailor',
+    'laundry',
+    'dry_cleaning',
+    'junction',
+    'intersection',
+    'traffic_signals',
+    'crossing',
+    'turning_circle',
+    'roundabout',
+    'mini_roundabout',
+    'highway',
+    'road',
+    'street',
+    'path',
+    'footway',
+    'cycleway',
+    'pedestrian',
+    'bus_stop',
+    'platform',
+    'stop_position',
+    'public_transport',
+    'toll_booth',
+    'bridge',
+    'tunnel',
   ];
 
   if (nonFoodClasses.some((c) => pClass.includes(c))) {
@@ -96,104 +205,39 @@ export function isFoodOrVenueFeature(properties: any, layerId?: string): boolean
     'eatery',
     'meal_takeaway',
     'meal_delivery',
+    'supermarket',
+    'convenience',
+    'grocery',
+    'greengrocer',
+    'butcher',
+    'fishmonger',
+    'general_store',
+    'market',
+    'food_and_drink',
   ];
 
   if (foodClassKeywords.some((k) => pClass.includes(k))) {
     return true;
   }
 
-  // Name keyword heuristics for Vietnamese food & drink venues (accented and unaccented)
-  const vietnameseFoodNameKeywords = [
-    'coffee',
-    'cafe',
-    'café',
-    'cà phê',
-    'ca phe',
-    'quán',
-    'quan',
-    'nhà hàng',
-    'nha hang',
-    'tiệm',
-    'tiem',
-    'bánh',
-    'banh',
-    'phở',
-    'pho',
-    'bún',
-    'bun',
-    'miến',
-    'mien',
-    'mì',
-    'mi',
-    'hủ tiếu',
-    'hu tieu',
-    'bánh mì',
-    'banh mi',
-    'cơm',
-    'com',
-    'cơm chay',
-    'cơm tấm',
-    'cơm niêu',
-    'chay',
-    'thực dưỡng',
-    'lẩu',
-    'lau',
-    'nướng',
-    'nuong',
-    'bbq',
-    'trà sữa',
-    'tra sua',
-    'trà chanh',
-    'tra chanh',
-    'trà',
-    'tra',
-    'chè',
-    'che',
-    'cháo',
-    'chao',
-    'xôi',
-    'xoi',
-    'vịt',
-    'vit',
-    'gà',
-    'ga',
-    'dê',
-    'de',
-    'bò',
-    'bo',
-    'hải sản',
-    'hai san',
-    'nước mía',
-    'sinh tố',
-    'bò kho',
-    'nem',
-    'chả',
-    'cha',
-    'ốc',
-    'oc',
-    'bia',
-    'beer',
-    'nhậu',
-    'dimsum',
-    'pizza',
-    'burger',
-    'sushi',
-    'steak',
-    'doner',
-    'kebab',
-    'sữa chua',
-    'kem',
-    'matcha',
-    'cacao',
+  // Exact whole-phrase or word-bounded regex for Vietnamese food & beverage venues
+  // Ensures short words like 'quan' only match 'quán' (food place) and NOT 'quân đội' or 'cơ quan'
+  const vietnameseFoodNamePatterns = [
+    /(?:^|[\s,./\-_(])(?:coffee|cafe|café|cà\s+phê|caphe)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:quán\s+ăn|nhà\s+hàng|tiệm\s+ăn|quán\s+cơm|quán\s+bún|quán\s+phở|quán\s+lẩu|quán\s+nướng|quán\s+nhậu|quán\s+chè|quán\s+ốc|quán\s+bia)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:quan\s+an|nha\s+hang|tiem\s+an|quan\s+com|quan\s+bun|quan\s+pho|quan\s+lau|quan\s+nuong|quan\s+nhau|quan\s+che|quan\s+oc|quan\s+bia)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:bánh\s+mì|banh\s+mi|bánh\s+ngọt|tiệm\s+bánh|tiem\s+banh|bakery)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:phở|pho\s+|bún|bun\s+|miến|mien\s+|mì\s+|hủ\s+tiếu|hu\s+tieu)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:cơm\s+tấm|cơm\s+niêu|cơm\s+chay|com\s+tam|com\s+nieu|cơm\s+bình\s+dân|cơm\s+rang)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:lẩu|lau\s+|nướng|nuong\s+|bbq|dimsum|pizza|burger|sushi|steak|doner|kebab)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:trà\s+sữa|tra\s+sua|trà\s+chanh|tra\s+chanh|sữa\s+chua|kem\s+|gelato|chè\s+|che\s+sầu)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:cháo\s+|chao\s+|xôi\s+|xoi\s+|hải\s+sản|hai\s+san|nước\s+mía|sinh\s+tố|bò\s+kho|nem\s+nướng|chả\s+cá)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:bia\s+hơi|bia\s+tươi|craft\s+beer|vuvuzela)(?:$|[\s,./\-_)])/i,
+    /(?:^|[\s,./\-_(])(?:siêu\s+thị|sieu\s+thi|bách\s+hóa|bach\s+hoa|bách\s+hóa\s+xanh|cửa\s+hàng\s+tiện\s+lợi|winmart|vinmart|circle\s+k|gs25|7\s*eleven|seven\s+eleven|familymart|ministop|coopmart|co\.?op\s*mart|big\s+c|go!?|lotte\s+mart|aeon|mega\s+market|brg\s+mart|fuji\s+mart|hapro\s+mart|chợ\s+ẩm\s+thực|food\s+market)(?:$|[\s,./\-_)])/i,
   ];
 
-  const lowerName = rawName.toLowerCase();
-  const unaccented = lowerName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
   if (
-    vietnameseFoodNameKeywords.some(
-      (kw) => lowerName.includes(kw) || unaccented.includes(kw)
-    )
+    vietnameseFoodNamePatterns.some((pattern) => pattern.test(lowerName) || pattern.test(unaccented))
   ) {
     return true;
   }
@@ -209,6 +253,10 @@ export function convertVectorFeatureToPlace(
   if (!feature || !feature.properties) return null;
 
   const props = feature.properties;
+  if (!isFoodOrVenueFeature(props, feature.layer?.id)) {
+    return null;
+  }
+
   const name = String(
     props.name ||
     props['name:vi'] ||

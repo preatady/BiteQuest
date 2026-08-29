@@ -1,5 +1,6 @@
 import { UnifiedPlace } from './types';
 import { TRI_REGION_VENUES } from '../../data/triRegionVenues';
+import { isFoodOrVenueFeature } from './vectorTileScanner';
 
 /**
  * 48-Hour Spatial & Master Venue Cache Engine (BiteQuest Production Grade)
@@ -94,7 +95,11 @@ export class SpatialVenueCacheManager {
             isFresh = ageMs < CACHE_TTL_48H_MS;
             this.masterTimestamp = parsed.timestamp;
             timestamp = parsed.timestamp;
-            rawPlaces = parsed.places;
+            const sanitized = parsed.places.filter((p) => isFoodOrVenueFeature(p));
+            if (sanitized.length !== parsed.places.length) {
+              this.saveMasterCache(sanitized);
+            }
+            rawPlaces = sanitized;
           }
         }
       } catch (err) {
@@ -108,6 +113,9 @@ export class SpatialVenueCacheManager {
       isFresh = this.masterTimestamp > 0 && (now - this.masterTimestamp < CACHE_TTL_48H_MS);
       timestamp = this.masterTimestamp || now;
     }
+
+    // Sanitize to strictly guarantee only valid food and supermarket places
+    rawPlaces = rawPlaces.filter((p) => isFoodOrVenueFeature(p));
 
     const totalCachedInStorage = rawPlaces.length;
 
@@ -297,10 +305,11 @@ export class SpatialVenueCacheManager {
   public savePlacesToGrid(places: UnifiedPlace[], centerLat: number, centerLng: number, radiusMeters: number): void {
     if (!Array.isArray(places) || places.length === 0) return;
     const now = Date.now();
+    const validPlaces = places.filter((p) => isFoodOrVenueFeature(p));
 
     // Group places by their exact spatial grid cell
     const cellGroups = new Map<string, UnifiedPlace[]>();
-    for (const place of places) {
+    for (const place of validPlaces) {
       if (typeof place.latitude !== 'number' || typeof place.longitude !== 'number') continue;
       const cellKey = this.getCellKey(place.latitude, place.longitude);
       const list = cellGroups.get(cellKey) || [];
@@ -323,9 +332,13 @@ export class SpatialVenueCacheManager {
       
       // Preserve existing valid places if any
       if (existing?.places) {
-        for (const p of existing.places) placeMap.set(p.id, p);
+        for (const p of existing.places) {
+          if (isFoodOrVenueFeature(p)) placeMap.set(p.id, p);
+        }
       }
-      for (const p of newPlaces) placeMap.set(p.id, p);
+      for (const p of newPlaces) {
+        if (isFoodOrVenueFeature(p)) placeMap.set(p.id, p);
+      }
 
       const merged = Array.from(placeMap.values());
       const cellData: GridCellData = {
@@ -403,7 +416,7 @@ export class SpatialVenueCacheManager {
           if (!raw) continue;
           const parsed = JSON.parse(raw);
           if (parsed && parsed.k && parsed.t && Array.isArray(parsed.p)) {
-            const places: UnifiedPlace[] = parsed.p.map((p: any) => ({
+            const rawPlaces: UnifiedPlace[] = parsed.p.map((p: any) => ({
               id: p.id,
               name: p.name,
               category: p.cat || 'street_food',
@@ -420,12 +433,21 @@ export class SpatialVenueCacheManager {
               activeDeal: p.deal,
             }));
 
-            this.memoryCache.set(parsed.k, {
+            const places = rawPlaces.filter((p) => isFoodOrVenueFeature(p));
+
+            const cellData: GridCellData = {
               cellKey: parsed.k,
               lastSyncedAt: parsed.t,
               places,
               count: places.length,
-            });
+            };
+
+            this.memoryCache.set(parsed.k, cellData);
+
+            // If invalid non-food places were cleaned, overwrite the stored item
+            if (places.length !== rawPlaces.length) {
+              this.persistCellToStorage(cellData);
+            }
           }
         }
       }

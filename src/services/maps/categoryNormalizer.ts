@@ -10,6 +10,7 @@ export type CanonicalCategory =
   | 'BAKERY_DESSERT'
   | 'BAR_BEER'
   | 'VEGETARIAN'
+  | 'SUPERMARKET'
   | 'OTHER_FOOD';
 
 export type ExploreFilterCategory = 'ALL' | CanonicalCategory;
@@ -172,6 +173,17 @@ export const CANONICAL_CATEGORIES: Record<CanonicalCategory, CategoryMetadata> =
     textColor: '#166534',
     borderColor: '#4ADE80',
   },
+  SUPERMARKET: {
+    id: 'SUPERMARKET',
+    label: 'Siêu thị & Tiện lợi',
+    shortLabel: 'Siêu thị',
+    iconName: 'icon-supermarket',
+    symbolGlyph: '🛒',
+    color: '#0D9488', // teal-600
+    bgColor: '#CCFBF1',
+    textColor: '#115E59',
+    borderColor: '#14B8A6',
+  },
   OTHER_FOOD: {
     id: 'OTHER_FOOD',
     label: 'Khác',
@@ -239,6 +251,9 @@ export function classifyVenue(venue: {
   if (rawList.some((c) => c.includes('vegetarian') || c.includes('vegan'))) {
     return { category: 'VEGETARIAN', source: 'PROVIDER_EXPLICIT', confidence: 0.95 };
   }
+  if (rawList.some((c) => c.includes('supermarket') || c.includes('convenience') || c.includes('grocery') || c.includes('greengrocer') || c.includes('market'))) {
+    return { category: 'SUPERMARKET', source: 'PROVIDER_EXPLICIT', confidence: 0.95 };
+  }
 
   // 2. Explicit Community Category (Priority 2)
   if (commCat) {
@@ -252,6 +267,7 @@ export function classifyVenue(venue: {
     if (commCat === 'dessert' || commCat === 'bakery') return { category: 'BAKERY_DESSERT', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'bar' || commCat === 'beer') return { category: 'BAR_BEER', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'vegetarian' || commCat === 'vegan') return { category: 'VEGETARIAN', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
+    if (commCat === 'supermarket' || commCat === 'grocery') return { category: 'SUPERMARKET', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
     if (commCat === 'restaurant') return { category: 'RESTAURANT', source: 'COMMUNITY_EXPLICIT', confidence: 0.90 };
   }
 
@@ -344,6 +360,14 @@ export function classifyVenue(venue: {
     return { category: 'FAST_FOOD', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
 
+  // SUPERMARKET (Siêu thị & Bách hóa / Cửa hàng tiện lợi thực phẩm)
+  if (
+    /(?:^|[\s,./\-_(])(sieu\s+thi|bach\s+hoa|bach\s+hoa\s+xanh|supermarket|grocery|convenience|winmart|vinmart|circle\s+k|gs25|7\s*eleven|seven\s+eleven|familymart|ministop|coopmart|co\.?op\s*mart|big\s+c|go!?|lotte\s+mart|aeon|aeon\s+mall|mega\s+market|brg\s+mart|fuji\s+mart|hapro\s+mart|cho\s+am\s+thuc|food\s+market)(?:$|[\s,./\-_)])/i.test(normName) ||
+    /(?:^|[\s,./\-_(])(siêu thị|bách hóa|cửa hàng tiện lợi)(?:$|[\s,./\-_)])/i.test(name)
+  ) {
+    return { category: 'SUPERMARKET', source: 'NAME_KEYWORD', confidence: 0.85 };
+  }
+
   // Raw category keywords as additional signals
   const upperCat = (venue.category || '').toUpperCase().trim();
   if (upperCat in CANONICAL_CATEGORIES) {
@@ -359,6 +383,7 @@ export function classifyVenue(venue: {
   if (rawCat === 'burger_western' || rawCat === 'fast_food') return { category: 'FAST_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'bar' || rawCat === 'drinks' || rawCat === 'bar_beer' || rawCat === 'beer') return { category: 'BAR_BEER', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'vegetarian' || rawCat === 'vegan' || rawCat === 'chay') return { category: 'VEGETARIAN', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat === 'supermarket' || rawCat === 'grocery' || rawCat.includes('supermarket')) return { category: 'SUPERMARKET', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'restaurant') return { category: 'RESTAURANT', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'street_food' || rawCat === 'other_food') return { category: 'OTHER_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
 
@@ -431,6 +456,7 @@ export const PREFERRED_QUICK_CATEGORY_PRIORITY: CanonicalCategory[] = [
   'HOTPOT',
   'BBQ',
   'RICE',
+  'SUPERMARKET',
   'FAST_FOOD',
   'BAKERY_DESSERT',
   'BAR_BEER',
@@ -445,6 +471,7 @@ export const FULL_FILTER_CATEGORY_ORDER: CanonicalCategory[] = [
   'HOTPOT',
   'BBQ',
   'RICE',
+  'SUPERMARKET',
   'FAST_FOOD',
   'BAKERY_DESSERT',
   'BAR_BEER',
@@ -481,6 +508,7 @@ export function computeDynamicFilterChips(
     BAKERY_DESSERT: 0,
     BAR_BEER: 0,
     VEGETARIAN: 0,
+    SUPERMARKET: 0,
     OTHER_FOOD: 0,
   };
 
@@ -545,6 +573,7 @@ export function computeQuickFilterChips(
     BAKERY_DESSERT: 0,
     BAR_BEER: 0,
     VEGETARIAN: 0,
+    SUPERMARKET: 0,
     OTHER_FOOD: 0,
   };
 
@@ -595,7 +624,7 @@ export function computeQuickFilterChips(
 }
 
 /**
- * Computes category counts for all 12 canonical categories for the Full Filter Sheet.
+ * Computes category counts for all 13 canonical categories for the Full Filter Sheet.
  */
 export function computeAllCategoryFilterCounts(
   venues: Array<{
@@ -619,6 +648,7 @@ export function computeAllCategoryFilterCounts(
     BAKERY_DESSERT: 0,
     BAR_BEER: 0,
     VEGETARIAN: 0,
+    SUPERMARKET: 0,
     OTHER_FOOD: 0,
   };
 

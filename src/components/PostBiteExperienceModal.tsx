@@ -18,12 +18,14 @@ interface PostBiteExperienceModalProps {
   result: PostBiteResultData | null;
   onContinueExplore: () => void;
   onViewJourney: () => void;
+  onViewFeed?: () => void;
 }
 
 export const PostBiteExperienceModal: React.FC<PostBiteExperienceModalProps> = ({
   result,
   onContinueExplore,
   onViewJourney,
+  onViewFeed,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -313,32 +315,51 @@ export const PostBiteExperienceModal: React.FC<PostBiteExperienceModalProps> = (
             </div>
           </div>
 
-          {/* Bottom Action Footer (Strictly 2 CTAs) */}
+          {/* Bottom Action Footer (CTAs) */}
           <div
             id="postbite-footer-actions"
             className="p-4 sm:p-5 bg-[#F7F5F0] border-t border-[#EDE8DE] flex flex-col gap-2 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]"
           >
-            {/* Primary Action CTA */}
-            <button
-              type="button"
-              id="btn-postbite-continue-explore"
-              onClick={onContinueExplore}
-              className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-[#FF6B35] hover:bg-[#E8551E] text-white shadow-sm flex items-center justify-center gap-2 transition-colors active:scale-[0.99]"
-            >
-              <Compass className="w-4 h-4" />
-              Tiếp tục khám phá
-            </button>
+            {/* Primary Action CTA - View on Feed */}
+            {onViewFeed && (
+              <button
+                type="button"
+                id="btn-postbite-view-feed"
+                onClick={onViewFeed}
+                className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-[#FF6B35] to-[#FFA07A] hover:opacity-95 text-white shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+              >
+                <Users className="w-4 h-4" />
+                Xem bài đăng trên Bản tin bạn bè
+              </button>
+            )}
 
-            {/* Secondary Action CTA */}
-            <button
-              type="button"
-              id="btn-postbite-view-journey"
-              onClick={onViewJourney}
-              className="w-full py-2.5 px-4 rounded-xl font-medium text-xs sm:text-sm bg-white hover:bg-[#F2EFE8] text-[#594139] border border-[#D5CEC5] flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Map className="w-3.5 h-3.5 text-[#FF6B35]" />
-              Xem Hành trình
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              {/* Secondary Action CTA - Continue Explore */}
+              <button
+                type="button"
+                id="btn-postbite-continue-explore"
+                onClick={onContinueExplore}
+                className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-colors active:scale-[0.99] ${
+                  onViewFeed
+                    ? 'bg-white hover:bg-[#F2EFE8] text-[#594139] border border-[#D5CEC5]'
+                    : 'bg-[#FF6B35] hover:bg-[#E8551E] text-white shadow-sm'
+                }`}
+              >
+                <Compass className="w-3.5 h-3.5" />
+                Tiếp tục khám phá
+              </button>
+
+              {/* Secondary Action CTA - View Journey */}
+              <button
+                type="button"
+                id="btn-postbite-view-journey"
+                onClick={onViewJourney}
+                className="w-full py-2.5 px-3 rounded-xl font-medium text-xs sm:text-sm bg-white hover:bg-[#F2EFE8] text-[#594139] border border-[#D5CEC5] flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Map className="w-3.5 h-3.5 text-[#FF6B35]" />
+                Xem Hành trình
+              </button>
+            </div>
           </div>
         </motion.div>
       </div>

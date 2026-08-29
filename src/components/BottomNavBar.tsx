@@ -54,33 +54,33 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
           </span>
         </button>
 
-        {/* 2. Radar (Radar Gợi Ý) */}
+        {/* 2. Feed (Bản tin bạn bè & cộng đồng) */}
         <button
           type="button"
-          onClick={() => onTabChange('radar')}
+          onClick={() => onTabChange('friends')}
           className={`min-h-[44px] flex flex-col items-center justify-center py-1 rounded-2xl transition-all duration-150 active:scale-95 cursor-pointer ${
-            activeTab === 'radar'
+            activeTab === 'friends'
               ? 'text-[#FF6B35] font-bold'
               : 'text-[#594139]/70 hover:text-[#2D2926]'
           }`}
-          id="tab-radar"
-          aria-selected={activeTab === 'radar'}
+          id="tab-friends"
+          aria-selected={activeTab === 'friends'}
         >
           <div
             className={`w-9 h-7 flex items-center justify-center rounded-full transition-all ${
-              activeTab === 'radar' ? 'bg-[#FF6B35]/12' : ''
+              activeTab === 'friends' ? 'bg-[#FF6B35]/12' : ''
             }`}
           >
             <span
               className={`material-symbols-outlined text-[22px] sm:text-[24px] ${
-                activeTab === 'radar' ? 'fill text-[#FF6B35]' : 'text-[#594139]'
+                activeTab === 'friends' ? 'fill text-[#FF6B35]' : 'text-[#594139]'
               }`}
             >
-              radar
+              dynamic_feed
             </span>
           </div>
           <span className="text-[10px] sm:text-[11px] font-heading mt-0.5 tracking-tight whitespace-nowrap">
-            Radar
+            Bản tin
           </span>
         </button>
 

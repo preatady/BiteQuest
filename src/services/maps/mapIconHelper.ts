@@ -124,6 +124,7 @@ export function createCategoryIconCanvas(
           BAKERY_DESSERT: '#72435B',
           BAR_BEER: '#55456A',
           VEGETARIAN: '#3E5E40',
+          SUPERMARKET: '#285A56',
           OTHER_FOOD: '#57534E',
         };
 

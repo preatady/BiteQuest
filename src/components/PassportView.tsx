@@ -505,7 +505,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
                     : 'bg-white border border-[#2D2926]/10'
                 }`}
               >
-                <span>эа╜э╗бя╕П</span>
+                <span>я┐╜я┐╜я┐╜я┐╜я┐╜я┐╜я╕П</span>
               </div>
 
               <div>

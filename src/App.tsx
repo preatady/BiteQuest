@@ -593,6 +593,7 @@ export default function App() {
               if (p) setSelectedPlace(p);
               setActiveTab('explore');
             }}
+            onNavigateToCamera={() => setActiveTab('camera')}
           />
         )}
 
@@ -725,6 +726,10 @@ export default function App() {
       {postBiteResult && (
         <PostBiteExperienceModal
           result={postBiteResult}
+          onViewFeed={() => {
+            setPostBiteResult(null);
+            setActiveTab('friends');
+          }}
           onContinueExplore={() => {
             setPostBiteResult(null);
             setActiveTab('explore');

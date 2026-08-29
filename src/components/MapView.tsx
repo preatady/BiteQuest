@@ -973,7 +973,7 @@ export const MapView: React.FC<MapViewProps> = ({
           onSelectPlace(null);
           setSelectedBackgroundPOI(poi);
           handleFlyTo(poi.latitude, poi.longitude);
-        } else if (feature.properties?.name) {
+        } else if (feature.properties?.name && isFoodOrVenueFeature(feature.properties, feature.layer?.id)) {
           const coords = (feature.geometry as any)?.coordinates;
           const fallbackPoi: UnifiedPlace = {
             id: poiId || `poi_${Date.now()}`,
@@ -1027,7 +1027,7 @@ export const MapView: React.FC<MapViewProps> = ({
     // Tapping empty map dismisses active place & background POI cards
     onSelectPlace(null);
     setSelectedBackgroundPOI(null);
-  }, [nearbyPOIs, referenceLocation, onSelectPlace, addDiscoveredPOIs]);
+  }, [nearbyPOIs, places, unpromotedNearbyPOIs, allLoadedVenues, referenceLocation, onSelectPlace, addDiscoveredPOIs]);
 
   // Viewport tracking & smooth ambient loading when panning to new areas
   const handleMapMoveEnd = useCallback(

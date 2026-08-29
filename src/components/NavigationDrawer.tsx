@@ -139,7 +139,23 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               {activeTab === 'explore' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
             </button>
 
-            {/* 1b. Radar */}
+            {/* 1b. Feed */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('friends')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-heading text-xs font-bold text-left transition-all ${
+                activeTab === 'friends'
+                  ? 'bg-[#FF6B35]/15 text-[#FF6B35]'
+                  : 'text-[#2D2926] hover:bg-[#F4F4F0]'
+              }`}
+              id="drawer-nav-friends"
+            >
+              <span className="material-symbols-outlined text-[20px]">dynamic_feed</span>
+              <span className="flex-1">Bản Tin Bạn Bè</span>
+              {activeTab === 'friends' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
+            </button>
+
+            {/* 1c. Radar */}
             <button
               type="button"
               onClick={() => handleNavClick('radar')}
