@@ -122,7 +122,7 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
 
   return (
     <div
-      className={`bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_2px_12px_rgba(45,41,38,0.08)] border border-[#2D2926]/8 p-1 flex items-center relative select-none ${className}`}
+      className={`bg-white/90 backdrop-blur-md rounded-full shadow-[0_2px_10px_rgba(45,41,38,0.06)] border border-stone-200/80 p-1 flex items-center relative select-none ${className}`}
       id="category-filter-bar"
     >
       {/* Scrollable Area Wrapper (Confines all scrolling, gradients, and arrows inside) */}
@@ -161,7 +161,6 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
             const isSelected = activeFilter === chip.id;
             const glyph = chip.metadata?.symbolGlyph || '🍴';
             const label = chip.metadata?.shortLabel || chip.label;
-            const count = chip.count;
 
             return (
               <button
@@ -171,26 +170,15 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
                 role="tab"
                 aria-selected={isSelected}
                 onClick={() => handleChipClick(chip.id)}
-                className={`shrink-0 min-h-[36px] sm:min-h-[38px] px-3 sm:px-3.5 py-1 rounded-xl text-xs sm:text-[13px] font-heading flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:scale-95 focus-visible:ring-2 focus-visible:ring-[#FF6B35] focus-visible:outline-none ${
+                className={`shrink-0 min-h-[30px] px-3 py-1 rounded-full text-[12px] font-heading flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:scale-95 focus-visible:ring-2 focus-visible:ring-[#FF6B35] focus-visible:outline-none ${
                   isSelected
-                    ? 'text-[#EA580C] font-bold bg-[#FF6B35]/12 border border-[#FF6B35]/30 shadow-2xs'
-                    : 'text-[#44403C] hover:text-[#1C1917] hover:bg-stone-100/90 font-medium bg-stone-50/70 border border-stone-200/50'
+                    ? 'text-white font-bold bg-[#FF6B35] shadow-xs'
+                    : 'text-[#44403C] hover:text-[#1C1917] hover:bg-stone-100/90 font-medium bg-stone-100/70 border border-stone-200/50'
                 }`}
                 id={`filter-chip-${chip.id.toLowerCase()}`}
               >
-                <span className="text-[13px] leading-none shrink-0">{glyph}</span>
+                <span className="text-[12px] leading-none shrink-0">{glyph}</span>
                 <span className="whitespace-nowrap font-medium">{label}</span>
-                {typeof count === 'number' && count > 0 && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
-                      isSelected
-                        ? 'bg-[#FF6B35] text-white'
-                        : 'bg-stone-200/80 text-stone-600'
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -216,7 +204,7 @@ export const CategoryFilterBar: React.FC<CategoryFilterBarProps> = ({
       </div>
 
       {/* Divider */}
-      <div className="w-[1px] h-5 bg-stone-200 shrink-0 mx-1" />
+      <div className="w-[1px] h-4 bg-stone-200 shrink-0 mx-1" />
 
       {/* Pinned "Bộ lọc" (Filter) Button */}
       <button

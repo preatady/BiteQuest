@@ -13,8 +13,8 @@
   --color-tertiary-container: #00A7CB;
   --color-primary-container: #FF6B35;
   --color-outline-variant: #E1BFB5;
-  --font-display: "Lexend", sans-serif;
-  --font-body: "Be Vietnam Pro", sans-serif;
+  --font-display: "Be Vietnam Pro", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-body: "Be Vietnam Pro", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
 }
 
 body {
@@ -24,6 +24,8 @@ body {
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Mobile safe area helpers */
@@ -34,7 +36,7 @@ body {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
-h1, h2, h3, h4, .font-heading {
+h1, h2, h3, h4, h5, h6, .font-heading {
   font-family: var(--font-display);
 }
 

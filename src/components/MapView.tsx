@@ -45,6 +45,7 @@ import { FomoLiveTicker } from './FomoLiveTicker';
 import { MysteryDropModal } from './MysteryDropModal';
 import { BiteRouletteModal } from './BiteRouletteModal';
 import { TrafficSmartNavigatorSheet } from './TrafficSmartNavigatorSheet';
+import { SmartVenueComparatorModal } from './SmartVenueComparatorModal';
 import { TrafficRouteResult } from '../services/maps/trafficSmartRoutingService';
 import {
   getOrUpdateHotnessSnapshot,
@@ -65,6 +66,11 @@ interface MapViewProps {
   isRadarOpen?: boolean;
   onRadarOpenChange?: (open: boolean) => void;
   onOpenBiteBot?: () => void;
+  onOpenMenu?: () => void;
+  onOpenNotifications?: () => void;
+  targetMapFocus?: { latitude: number; longitude: number; name?: string } | null;
+  onClearTargetMapFocus?: () => void;
+  openTrafficSheetDirectly?: boolean;
 }
 
 export type ExploreMode = 'radar' | 'friends' | 'quest';
@@ -309,6 +315,11 @@ export const MapView: React.FC<MapViewProps> = ({
   isRadarOpen = false,
   onRadarOpenChange,
   onOpenBiteBot,
+  onOpenMenu,
+  onOpenNotifications,
+  targetMapFocus,
+  onClearTargetMapFocus,
+  openTrafficSheetDirectly,
 }) => {
   const [exploreMode, setExploreMode] = useState<ExploreMode>('radar');
   const [searchQuery, setSearchQuery] = useState('');
@@ -331,7 +342,20 @@ export const MapView: React.FC<MapViewProps> = ({
   const [showRoulette, setShowRoulette] = useState(false);
   const [showTrafficSheet, setShowTrafficSheet] = useState(false);
   const [selectedTrafficRoute, setSelectedTrafficRoute] = useState<TrafficRouteResult | null>(null);
+  const [showComparatorModal, setShowComparatorModal] = useState(false);
+  const [comparatorInitialVenues, setComparatorInitialVenues] = useState<(Place | UnifiedPlace)[]>([]);
   const mapRef = useRef<MapRef | null>(null);
+
+  const handleOpenComparator = (initialVenues?: (Place | UnifiedPlace)[]) => {
+    if (initialVenues && initialVenues.length > 0) {
+      setComparatorInitialVenues(initialVenues);
+    } else if (selectedPlace) {
+      setComparatorInitialVenues([selectedPlace]);
+    } else {
+      setComparatorInitialVenues([]);
+    }
+    setShowComparatorModal(true);
+  };
 
   const handleTriggerRadarScan = () => {
     setIsRadarBoosted(true);
@@ -473,6 +497,24 @@ export const MapView: React.FC<MapViewProps> = ({
       isMounted = false;
     };
   }, [triggerRippleExpansion]);
+
+  // Handle external focus target (e.g. from Traffic Notification center)
+  useEffect(() => {
+    if (targetMapFocus?.latitude && targetMapFocus?.longitude) {
+      mapRef.current?.flyTo({
+        center: [targetMapFocus.longitude, targetMapFocus.latitude],
+        zoom: 16.2,
+        duration: 1000,
+      });
+    }
+  }, [targetMapFocus]);
+
+  // Handle direct opening of traffic sheet
+  useEffect(() => {
+    if (openTrafficSheetDirectly) {
+      setShowTrafficSheet(true);
+    }
+  }, [openTrafficSheetDirectly]);
 
   // Force map resize on mount and after layout transitions
   useEffect(() => {
@@ -1243,7 +1285,7 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
           </Marker>
 
-          {/* Promoted BiteQuest Layer Markers (Clean, Uncluttered Circular Pins with on-hover tooltips) */}
+          {/* Promoted BiteQuest Layer Markers (Clean, Uncluttered Circular Pins with on-hover tooltips & Smart LOD) */}
           {filteredPlaces.map((place) => {
             const isSelected = activePlace?.id === place.id;
             const isTrafficSelected = selectedTrafficRoute?.place?.id === place.id;
@@ -1269,12 +1311,24 @@ export const MapView: React.FC<MapViewProps> = ({
               (exploreMode === 'friends' && !isFriendActive) ||
               (exploreMode === 'quest' && !isQuestActive);
 
+            // Smart Level of Detail: Prominent Badge for Hero/Selected/Hot/Visited/Quest, Crisp Micro-Pin for secondary
+            const isProminentPin =
+              isSelected ||
+              isTrafficSelected ||
+              isVisited ||
+              isHot ||
+              isScout ||
+              isQuest ||
+              isFriendEcho ||
+              isBookmarked ||
+              Boolean((place as any).activeDeal);
+
             return (
               <Marker
                 key={place.id}
                 longitude={place.longitude}
                 latitude={place.latitude}
-                anchor="bottom"
+                anchor={isProminentPin ? 'bottom' : 'center'}
                 onClick={(e) => {
                   e.originalEvent.stopPropagation();
                   setSelectedBackgroundPOI(null);
@@ -1283,7 +1337,7 @@ export const MapView: React.FC<MapViewProps> = ({
                 }}
               >
                 <div
-                  className={`relative group cursor-pointer transform hover:scale-115 active:scale-95 transition-all ${
+                  className={`relative group cursor-pointer transform hover:scale-120 active:scale-95 transition-all ${
                     isDimmedInMode ? 'opacity-40 scale-85 z-10' : 'opacity-100 z-20'
                   }`}
                   id={`marker-promoted-${place.id}`}
@@ -1293,75 +1347,88 @@ export const MapView: React.FC<MapViewProps> = ({
                     <div className="absolute -inset-2 rounded-full bg-[#FF6B35]/40 animate-ping pointer-events-none"></div>
                   )}
 
-                  {/* Marker Pin Head - Hot vs Visited vs Muted Normal Pin */}
-                  <div
-                    className={`relative flex items-center justify-center rounded-full border-2 transition-all shadow-md ${
-                      isSelected || isTrafficSelected
-                        ? 'w-10 h-10 bg-[#FF6B35] border-white scale-110 shadow-lg text-white ring-4 ring-[#FF6B35]/30'
-                        : isVisited
-                        ? 'w-8 h-8 bg-[#10B981] border-white ring-2 ring-[#10B981]/40 shadow-sm text-white'
-                        : isHot
-                        ? 'w-8.5 h-8.5 bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 border-amber-200 text-white shadow-md ring-2 ring-orange-400/40'
-                        : isScout
-                        ? 'w-8 h-8 bg-[#2EC4B6] border-white text-white'
-                        : isQuest
-                        ? 'w-8 h-8 bg-[#FF9F1C] border-[#2D2926] text-[#2D2926]'
-                        : isFriendEcho
-                        ? 'w-8 h-8 bg-[#FF6B35] border-white text-white'
-                        : 'w-7.5 h-7.5 bg-[#3F3F46] border-[#71717A] text-zinc-300 shadow-xs'
-                    }`}
-                  >
-                    <span className="text-xs">
-                      {isScout ? '🥇' : isQuest ? '🗺️' : isFriendEcho ? '👥' : catMeta?.symbolGlyph || '🍴'}
-                    </span>
+                  {isProminentPin ? (
+                    <>
+                      {/* Marker Pin Head - Prominent Hot vs Visited vs Quest Pin */}
+                      <div
+                        className={`relative flex items-center justify-center rounded-full border-2 transition-all shadow-md ${
+                          isSelected || isTrafficSelected
+                            ? 'w-10 h-10 bg-[#FF6B35] border-white scale-110 shadow-lg text-white ring-4 ring-[#FF6B35]/30'
+                            : isVisited
+                            ? 'w-8 h-8 bg-[#10B981] border-white ring-2 ring-[#10B981]/40 shadow-sm text-white'
+                            : isHot
+                            ? 'w-8.5 h-8.5 bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 border-amber-200 text-white shadow-md ring-2 ring-orange-400/40'
+                            : isScout
+                            ? 'w-8 h-8 bg-[#2EC4B6] border-white text-white'
+                            : isQuest
+                            ? 'w-8 h-8 bg-[#FF9F1C] border-[#2D2926] text-[#2D2926]'
+                            : isFriendEcho
+                            ? 'w-8 h-8 bg-[#FF6B35] border-white text-white'
+                            : isBookmarked
+                            ? 'w-8 h-8 bg-[#00A7CB] border-white text-white shadow-sm'
+                            : 'w-8 h-8 bg-rose-500 border-white text-white shadow-sm'
+                        }`}
+                      >
+                        <span className="text-xs">
+                          {isScout ? '🥇' : isQuest ? '🗺️' : isFriendEcho ? '👥' : catMeta?.symbolGlyph || '🍴'}
+                        </span>
 
-                    {/* Visited Checkmark Badge */}
-                    {isVisited && (
-                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#10B981] rounded-full border border-white flex items-center justify-center text-[8px] text-white font-bold shadow-xs">
-                        ✓
-                      </span>
-                    )}
+                        {/* Visited Checkmark Badge */}
+                        {isVisited && (
+                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#10B981] rounded-full border border-white flex items-center justify-center text-[8px] text-white font-bold shadow-xs">
+                            ✓
+                          </span>
+                        )}
 
-                    {/* 24h Hot Flame Accent Badge */}
-                    {isHot && !isSelected && (
-                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 rounded-full border border-white flex items-center justify-center text-[8px] shadow-xs">
-                        🔥
-                      </span>
-                    )}
+                        {/* 24h Hot Flame Accent Badge */}
+                        {isHot && !isSelected && (
+                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 rounded-full border border-white flex items-center justify-center text-[8px] shadow-xs">
+                            🔥
+                          </span>
+                        )}
 
-                    {/* Bookmark Indicator Badge */}
-                    {isBookmarked && !isVisited && !isHot && (
-                      <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#00A7CB] rounded-full border border-white flex items-center justify-center">
-                        <span className="text-[8px] text-white">★</span>
+                        {/* Bookmark Indicator Badge */}
+                        {isBookmarked && !isVisited && !isHot && (
+                          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#00A7CB] rounded-full border border-white flex items-center justify-center">
+                            <span className="text-[8px] text-white">★</span>
+                          </div>
+                        )}
+
+                        {/* Active Deal / Voucher Badge */}
+                        {(place as any).activeDeal && !isVisited && (
+                          <span className="absolute -bottom-1 -left-1 w-3.5 h-3.5 bg-rose-500 rounded-full border border-white flex items-center justify-center text-[7px] shadow-xs text-white" title={`Ưu đãi: ${(place as any).activeDeal.discountLabel}`}>
+                            🎟️
+                          </span>
+                        )}
                       </div>
-                    )}
 
-                    {/* Active Deal / Voucher Badge */}
-                    {(place as any).activeDeal && !isVisited && (
-                      <span className="absolute -bottom-1 -left-1 w-3.5 h-3.5 bg-rose-500 rounded-full border border-white flex items-center justify-center text-[7px] shadow-xs text-white" title={`Ưu đãi: ${(place as any).activeDeal.discountLabel}`}>
-                        🎟️
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Bottom Pin Tip */}
-                  <div
-                    className={`w-0 h-0 mx-auto border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] -mt-0.5 ${
-                      isSelected || isTrafficSelected
-                        ? 'border-t-[#FF6B35]'
-                        : isVisited
-                        ? 'border-t-[#10B981]'
-                        : isHot
-                        ? 'border-t-orange-500'
-                        : isScout
-                        ? 'border-t-[#2EC4B6]'
-                        : isQuest
-                        ? 'border-t-[#FF9F1C]'
-                        : isFriendEcho
-                        ? 'border-t-[#FF6B35]'
-                        : 'border-t-[#3F3F46]'
-                    }`}
-                  ></div>
+                      {/* Bottom Pin Tip */}
+                      <div
+                        className={`w-0 h-0 mx-auto border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] -mt-0.5 ${
+                          isSelected || isTrafficSelected
+                            ? 'border-t-[#FF6B35]'
+                            : isVisited
+                            ? 'border-t-[#10B981]'
+                            : isHot
+                            ? 'border-t-orange-500'
+                            : isScout
+                            ? 'border-t-[#2EC4B6]'
+                            : isQuest
+                            ? 'border-t-[#FF9F1C]'
+                            : isFriendEcho
+                            ? 'border-t-[#FF6B35]'
+                            : isBookmarked
+                            ? 'border-t-[#00A7CB]'
+                            : 'border-t-rose-500'
+                        }`}
+                      ></div>
+                    </>
+                  ) : (
+                    /* Clean, Minimalist Micro Pin for General Venues (Avoids visual clutter) */
+                    <div className="w-4 h-4 rounded-full bg-[#FF6B35] border-2 border-white shadow-xs flex items-center justify-center hover:scale-125 transition-transform">
+                      <div className="w-1 h-1 rounded-full bg-white"></div>
+                    </div>
+                  )}
 
                   {/* Hover Tooltip */}
                   <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-[#1C1917]/95 backdrop-blur-md text-white font-heading text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md z-40 border border-white/20">
@@ -1375,7 +1442,7 @@ export const MapView: React.FC<MapViewProps> = ({
       </div>
 
       {/* TOP EXPLORE CONTROLS (GOOGLE MAPS STYLE SEARCH & FOOD NAVIGATION) */}
-      <div className="absolute top-2.5 left-3 right-3 md:left-1/2 md:-translate-x-1/2 md:w-[500px] z-30 pointer-events-auto flex flex-col gap-1.5">
+      <div className="absolute top-[calc(4.5rem+env(safe-area-inset-top,0px))] left-3.5 right-3.5 md:left-1/2 md:-translate-x-1/2 md:w-[520px] z-30 pointer-events-auto flex flex-col gap-2">
         {/* Google Maps-Style Interactive Search Bar */}
         <GoogleMapsSearchBar
           searchQuery={searchQuery}
@@ -1407,6 +1474,8 @@ export const MapView: React.FC<MapViewProps> = ({
           onSelectCategory={(cat) => handleSelectCategoryFilter(cat as ExploreFilterCategory)}
           onOpenFilter={() => setShowFullFilterSheet(true)}
           onOpenBiteBot={onOpenBiteBot}
+          onOpenTraffic={() => setShowTrafficSheet(true)}
+          onOpenComparator={handleOpenComparator}
           isLoading={isLoadingPOIs}
         />
 
@@ -1440,7 +1509,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
       {/* 3B. Floating "Tìm & Tải quán tại khu vực này" Trigger when user pans away */}
       {isPannedFarFromBase && !isVenueSelected && (
-        <div className="absolute top-36 md:top-34 left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-fade-in">
+        <div className="absolute top-[calc(13rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-30 pointer-events-auto animate-fade-in">
           <button
             type="button"
             onClick={async () => {
@@ -1485,7 +1554,7 @@ export const MapView: React.FC<MapViewProps> = ({
       {/* 4. Empty Search/Filter State Banner */}
       {totalVisibleVenues === 0 && isFilterActive && (
         <div
-          className="absolute top-36 left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-[#FDFCF8]/95 backdrop-blur-md px-5 py-4 rounded-2xl shadow-[0_8px_30px_rgba(45,41,38,0.12)] border border-[#2D2926]/10 flex flex-col items-center gap-2.5 max-w-[340px] text-center animate-fade-in"
+          className="absolute top-[calc(13rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-[#FDFCF8]/95 backdrop-blur-md px-5 py-4 rounded-2xl shadow-[0_8px_30px_rgba(45,41,38,0.12)] border border-[#2D2926]/10 flex flex-col items-center gap-2.5 max-w-[340px] text-center animate-fade-in"
           id="empty-filter-state-banner"
           role="status"
         >
@@ -1678,28 +1747,28 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* 5. Floating Map Controls (Layer Switcher & Re-Center) */}
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-2.5 z-20 pointer-events-auto items-center">
+      {/* 5. Floating Map Controls (Clean 3-Button Stack: Layers, Roulette, GPS) */}
+      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20 pointer-events-auto items-center">
         {/* Layer Switcher Trigger Button */}
         <div className="relative">
           <button
             onClick={() => setShowLayerSwitcher((prev) => !prev)}
-            className={`w-11 h-11 rounded-full shadow-[0_4px_16px_rgba(45,41,38,0.12)] flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+            className={`w-10.5 h-10.5 rounded-full shadow-[0_4px_16px_rgba(45,41,38,0.12)] flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
               showLayerSwitcher
                 ? 'bg-[#2D2926] text-white'
-                : 'bg-white text-[#2D2926] hover:bg-[#F4F4F0]'
+                : 'bg-white/95 text-[#2D2926] hover:bg-stone-50 border border-stone-200/80'
             }`}
             title="Lớp bản đồ"
             id="btn-map-layer-switcher"
             aria-label="Lớp bản đồ"
           >
-            <span className="material-symbols-outlined text-[22px]">layers</span>
+            <span className="material-symbols-outlined text-[20px]">layers</span>
           </button>
 
           {/* Compact Layer Switcher Popover */}
           {showLayerSwitcher && (
             <div
-              className="absolute right-14 top-1/2 -translate-y-1/2 w-64 bg-white/95 backdrop-blur-md rounded-2xl p-3 border border-[#2D2926]/10 shadow-[0_8px_30px_rgba(45,41,38,0.18)] z-30 animate-fade-in flex flex-col gap-2"
+              className="absolute right-13 top-1/2 -translate-y-1/2 w-64 bg-white/95 backdrop-blur-md rounded-2xl p-3 border border-[#2D2926]/10 shadow-[0_8px_30px_rgba(45,41,38,0.18)] z-30 animate-fade-in flex flex-col gap-2"
               id="map-layer-switcher-popover"
             >
               <div className="flex items-center justify-between pb-1.5 border-b border-[#2D2926]/8">
@@ -1820,40 +1889,49 @@ export const MapView: React.FC<MapViewProps> = ({
         <button
           type="button"
           onClick={() => setShowTrafficSheet(true)}
-          className={`w-11 h-11 rounded-full shadow-[0_4px_16px_rgba(16,185,129,0.35)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-white group relative ${
+          className={`w-10.5 h-10.5 rounded-full shadow-[0_4px_16px_rgba(16,185,129,0.35)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white group relative ${
             selectedTrafficRoute ? 'bg-gradient-to-br from-emerald-500 to-teal-700 ring-2 ring-emerald-400' : 'bg-gradient-to-br from-emerald-600 to-emerald-800'
           }`}
           title="Tránh Tắc Đường, Mưa & Cảnh Báo Ngập Lụt"
           id="btn-traffic-smart-navigator"
         >
-          <span className="text-xl group-hover:scale-110 transition-transform">🚦</span>
+          <span className="text-lg group-hover:scale-110 transition-transform">🚦</span>
           {selectedTrafficRoute && (
             <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white animate-pulse"></span>
           )}
+        </button>
+
+        {/* ⚖️ Smart Venue & Multi-Route Comparator Floating Trigger */}
+        <button
+          type="button"
+          onClick={() => handleOpenComparator()}
+          className="w-10.5 h-10.5 bg-gradient-to-br from-amber-600 to-orange-700 rounded-full shadow-[0_4px_16px_rgba(217,119,6,0.4)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white group relative"
+          title="So sánh quán & tối ưu lộ trình né kẹt xe"
+          id="btn-smart-comparator"
+        >
+          <span className="text-lg group-hover:scale-110 transition-transform">⚖️</span>
         </button>
 
         {/* 🎲 Bite Roulette Floating Trigger */}
         <button
           type="button"
           onClick={() => setShowRoulette(true)}
-          className="w-11 h-11 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full shadow-[0_4px_16px_rgba(245,158,11,0.4)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border-2 border-white group relative"
-          title="Ăn gì hôm nay? (Vòng quay ẩm thực ngẫu nhiên)"
+          className="w-10.5 h-10.5 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full shadow-[0_4px_16px_rgba(245,158,11,0.35)] flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white group relative"
+          title="Ăn gì hôm nay? (Vòng quay ẩm thực)"
           id="btn-bite-roulette"
         >
-          <span className="text-xl group-hover:rotate-45 transition-transform duration-300">🎲</span>
-          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-white animate-ping"></span>
-          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-white"></span>
+          <span className="text-lg group-hover:rotate-45 transition-transform duration-300">🎲</span>
         </button>
 
         {/* Re-Center GPS Button */}
         <button
           onClick={handleMyLocationClick}
-          className="w-11 h-11 bg-white rounded-full shadow-[0_4px_16px_rgba(45,41,38,0.12)] flex items-center justify-center text-[#2D2926] hover:bg-[#F4F4F0] active:scale-95 transition-all cursor-pointer"
+          className="w-10.5 h-10.5 bg-white/95 rounded-full shadow-[0_4px_16px_rgba(45,41,38,0.12)] flex items-center justify-center text-[#2D2926] hover:bg-stone-50 border border-stone-200/80 active:scale-95 transition-all cursor-pointer"
           title={hasRealLocation ? 'Vị trí của bạn' : 'Định vị GPS'}
           id="btn-my-location"
         >
           <span
-            className={`material-symbols-outlined text-[22px] ${
+            className={`material-symbols-outlined text-[20px] ${
               hasRealLocation ? 'text-[#FF6B35]' : 'text-[#8D7168]'
             }`}
           >
@@ -1884,24 +1962,6 @@ export const MapView: React.FC<MapViewProps> = ({
         />
       )}
 
-      {/* 6b. BiteBot AI Assistant Floating Action Trigger on Explore (Positioned comfortably above bottom card) */}
-      {!activePlace && !selectedBackgroundPOI && !isRadarOpen && onOpenBiteBot && (
-        <div className="absolute bottom-34 right-3 z-20 pointer-events-auto">
-          <button
-            type="button"
-            onClick={onOpenBiteBot}
-            className="group bg-[#2D2926]/90 hover:bg-[#1E1B19] active:scale-95 text-white backdrop-blur-md px-3 py-2 rounded-full shadow-[0_4px_16px_rgba(45,41,38,0.20)] border border-white/15 flex items-center gap-1.5 transition-all cursor-pointer hover:shadow-lg"
-            id="btn-map-bitebot-fab"
-            title="Hỏi Trợ lý Ẩm thực BiteBot AI"
-          >
-            <span className="text-xs animate-pulse">✨</span>
-            <span className="font-heading text-[11px] font-bold tracking-tight text-white hidden xs:inline">
-              BiteBot AI
-            </span>
-          </button>
-        </div>
-      )}
-
       {/* 6c. Bottom Opportunity Carousel (Rendered when Radar destination/tab is active) */}
       {!activePlace && !selectedBackgroundPOI && isRadarOpen && displayedOpportunities.length > 0 && (
         <div className="absolute bottom-22 left-0 right-0 z-30 pointer-events-none">
@@ -1929,16 +1989,16 @@ export const MapView: React.FC<MapViewProps> = ({
 
         return (
           <div
-            className="absolute bottom-22 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-[420px] z-40 transition-all duration-300 transform translate-y-0 pointer-events-auto"
+            className="absolute bottom-20 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-[420px] z-40 transition-all duration-300 transform translate-y-0 pointer-events-auto"
             id="active-background-poi-card"
           >
-            <div className="bg-[#FDFCF8] rounded-3xl shadow-[0_-6px_30px_rgba(45,41,38,0.16)] border border-[#2D2926]/10 overflow-hidden flex flex-col p-4 gap-3">
+            <div className="bg-[#FDFCF8] rounded-2xl shadow-[0_-4px_24px_rgba(45,41,38,0.18)] border border-[#2D2926]/10 overflow-hidden flex flex-col max-h-[50vh] sm:max-h-[460px]">
               {/* Header with Title and Close Button */}
-              <div className="flex justify-between items-start">
-                <div className="flex-1 pr-2">
-                  <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+              <div className="p-3 bg-white border-b border-[#2D2926]/5 flex items-start justify-between gap-2 shrink-0">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                     <span
-                      className="font-heading text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 border"
+                      className="font-heading text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border shrink-0"
                       style={{
                         backgroundColor: catMeta.bgColor,
                         color: catMeta.textColor,
@@ -1955,14 +2015,9 @@ export const MapView: React.FC<MapViewProps> = ({
                         <span>Đã ghé thăm</span>
                       </span>
                     ) : poiHotness.isHot ? (
-                      <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white font-heading text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                      <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white font-heading text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
                         <span>🔥</span>
                         <span>{poiHotness.badgeLabel || 'Đang Hot (24h)'}</span>
-                      </span>
-                    ) : verifiedCount > 0 ? (
-                      <span className="bg-[#D1FAE5] text-[#065F46] border border-[#10B981] font-heading text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <span>🛡️</span>
-                        <span>{verifiedCount} lượt Bite xác minh</span>
                       </span>
                     ) : (
                       <span className="bg-[#F4F4F5] text-[#71717A] border border-[#E4E4E7] font-heading text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -1970,70 +2025,62 @@ export const MapView: React.FC<MapViewProps> = ({
                       </span>
                     )}
                   </div>
-                  <h2 className="font-heading text-lg font-bold text-[#2D2926] leading-snug">
+                  <h2 className="font-heading text-base font-bold text-[#2D2926] leading-tight truncate">
                     {selectedBackgroundPOI.name}
                   </h2>
-                  <p className="text-xs text-[#594139] mt-0.5">
+                  <p className="text-[11px] text-[#594139] truncate mt-0.5">
                     {selectedBackgroundPOI.address}
                   </p>
                 </div>
                 <button
                   onClick={() => setSelectedBackgroundPOI(null)}
-                  className="w-8 h-8 bg-[#F4F4F0] hover:bg-[#EAEAE6] rounded-full flex items-center justify-center text-[#2D2926] transition-all cursor-pointer shrink-0 active:scale-90"
+                  className="w-7 h-7 bg-[#F4F4F0] hover:bg-[#EAEAE6] rounded-full flex items-center justify-center text-[#2D2926] transition-all cursor-pointer shrink-0 active:scale-90"
                   id="btn-close-poi-card"
                   title="Đóng"
                 >
-                  <span className="material-symbols-outlined text-[18px]">close</span>
+                  <span className="material-symbols-outlined text-[16px]">close</span>
                 </button>
               </div>
 
-              {/* 24h Hotness Media / Rating Spotlight */}
-              {poiHotness.isHot && !isVisited && (
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200/80 rounded-2xl p-2.5 flex flex-col gap-1.5 shadow-xs">
-                  <div className="flex items-center justify-between text-[10px] font-heading font-extrabold text-orange-800">
-                    <span className="flex items-center gap-1">
-                      <span>🔥 XU HƯỚNG ẨM THỰC 24H</span>
+              {/* Body */}
+              <div className="p-3 overflow-y-auto space-y-2 text-xs">
+                {/* 24h Hotness Media / Rating Spotlight */}
+                {poiHotness.isHot && !isVisited && (
+                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200/80 rounded-xl p-2 flex items-center justify-between text-[11px] text-orange-950 font-medium">
+                    <span className="flex items-center gap-1 truncate">
+                      <span>🔥</span>
+                      <strong className="text-orange-900 truncate">
+                        {poiHotness.pressMention ? `"${poiHotness.pressMention.headline}"` : (poiHotness.reasons[0] || 'Xu hướng ẩm thực')}
+                      </strong>
                     </span>
-                    <span className="text-orange-600 font-semibold flex items-center gap-1">
-                      <span>🔄 Tự cập nhật: Còn {formatTimeUntilNext24hUpdate(hotnessSnapshot.nextUpdateAt)}</span>
+                    {poiHotness.pressMention && (
+                      <span className="text-[10px] text-orange-700 bg-white/80 px-1.5 py-0.2 rounded border border-orange-200 shrink-0 ml-1">
+                        {poiHotness.pressMention.source}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Distance & Info */}
+                <div className="flex items-center justify-between text-[11px] text-[#594139] bg-[#FAF9F5] p-2 rounded-xl border border-[#2D2926]/5">
+                  <div className="flex items-center gap-1 font-heading font-bold text-[#2D2926]">
+                    <span className="material-symbols-outlined text-[#FF6B35] text-[15px]">near_me</span>
+                    <span>
+                      {selectedPOIDistanceM !== null
+                        ? selectedPOIDistanceM < 1000
+                          ? `${selectedPOIDistanceM}m`
+                          : `${(selectedPOIDistanceM / 1000).toFixed(1)}km`
+                        : selectedBackgroundPOI.district || 'Gần bạn'}
                     </span>
                   </div>
-
-                  {poiHotness.pressMention ? (
-                    <div className="text-xs text-stone-800 flex flex-col gap-0.5 bg-white/80 p-2 rounded-xl border border-orange-100">
-                      <span className="font-bold text-orange-950 flex items-center gap-1">
-                        <span>📰 {poiHotness.pressMention.source}:</span>
-                        <span className="font-normal italic text-stone-700">"{poiHotness.pressMention.headline}"</span>
-                      </span>
-                    </div>
-                  ) : poiHotness.reasons.length > 0 ? (
-                    <div className="text-xs text-stone-800 flex items-center gap-1.5 bg-white/80 p-1.5 rounded-xl border border-orange-100 font-medium">
-                      <span>⭐</span>
-                      <span>{poiHotness.reasons[0]}</span>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-
-              {/* Distance & Info */}
-              <div className="flex items-center justify-between text-xs text-[#594139] bg-[#FAF9F5] p-2.5 rounded-xl border border-[#2D2926]/5">
-                <div className="flex items-center gap-1.5 font-heading font-bold text-[#2D2926]">
-                  <span className="material-symbols-outlined text-[#FF6B35] text-[18px]">near_me</span>
-                  <span>
-                    {selectedPOIDistanceM !== null
-                      ? selectedPOIDistanceM < 1000
-                        ? `${selectedPOIDistanceM}m`
-                        : `${(selectedPOIDistanceM / 1000).toFixed(1)}km`
-                      : selectedBackgroundPOI.district || 'Gần bạn'}
+                  <span className="text-[10.5px] text-[#594139]/80 font-medium truncate">
+                    {isVisited ? 'Đã lưu trong lịch sử' : 'Check-in để tích XP & mở sương mù'}
                   </span>
                 </div>
-                <span className="text-[11px] text-[#594139]/80 font-medium">
-                  {isVisited ? 'Đã lưu trong lịch sử Bite' : 'Mở khóa quán này bằng cách Check-in'}
-                </span>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-2">
+              <div className="p-2.5 bg-white border-t border-[#2D2926]/5 flex gap-2 shrink-0">
                 <button
                   onClick={() => {
                     onNavigateToCamera({
@@ -2055,11 +2102,11 @@ export const MapView: React.FC<MapViewProps> = ({
                       openingHoursText: '',
                     });
                   }}
-                  className="flex-1 h-11 bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white rounded-full font-heading text-xs font-bold shadow-md shadow-[#FF6B35]/30 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                  className="flex-1 h-9 bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white rounded-xl font-heading text-xs font-bold shadow-xs flex items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
                   id="btn-poi-capture-bite"
                 >
-                  <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-                  <span>{isVisited ? 'Chụp thêm Bite 📸' : 'Chụp Bite check-in (+50 XP) 📸'}</span>
+                  <span className="material-symbols-outlined text-[16px]">photo_camera</span>
+                  <span>{isVisited ? 'Chụp Bite 📸' : 'Chụp check-in (+50 XP)'}</span>
                 </button>
 
                 <button
@@ -2079,12 +2126,24 @@ export const MapView: React.FC<MapViewProps> = ({
                     });
                     window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
                   }}
-                  className="px-4 bg-white border border-[#2D2926]/10 hover:bg-[#F4F4F0] text-[#2D2926] h-11 rounded-full font-heading text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer"
+                  className="px-2.5 bg-white border border-[#2D2926]/10 hover:bg-[#F4F4F0] text-[#2D2926] h-9 rounded-xl font-heading text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer shrink-0"
                   title="Chỉ đường"
                   id="btn-poi-directions"
                 >
-                  <span className="material-symbols-outlined text-[18px] text-[#FF6B35]">directions</span>
-                  <span>Chỉ đường</span>
+                  <span className="material-symbols-outlined text-[16px] text-[#FF6B35]">directions</span>
+                  <span className="hidden sm:inline">Chỉ đường</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    handleOpenComparator([selectedBackgroundPOI]);
+                  }}
+                  className="px-2.5 bg-amber-50 border border-amber-300 hover:bg-amber-100 text-amber-900 h-9 rounded-xl font-heading text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer shrink-0"
+                  title="So sánh với quán khác"
+                  id="btn-poi-compare"
+                >
+                  <span>⚖️</span>
+                  <span>So sánh</span>
                 </button>
               </div>
             </div>
@@ -2103,20 +2162,24 @@ export const MapView: React.FC<MapViewProps> = ({
           (activePlace.friendsVisited && activePlace.friendsVisited.length > 0) ||
           Boolean(activePlace.communityVerified);
 
+        const vId = activePlace.id || (activePlace as any).providerPlaceId || activePlace.name;
+        const placeHotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(activePlace, hotnessSnapshot.calculatedAt);
+        const deal = (activePlace as any).activeDeal;
+
         return (
           <div
-            className="absolute bottom-22 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-[420px] z-40 transition-all duration-300 transform translate-y-0 pointer-events-auto"
+            className="absolute bottom-20 left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:w-[420px] z-40 transition-all duration-300 transform translate-y-0 pointer-events-auto"
             id="active-restaurant-card-v2"
           >
-            <div className="bg-[#FDFCF8] rounded-3xl shadow-[0_-6px_30px_rgba(45,41,38,0.16)] border border-[#2D2926]/10 overflow-hidden flex flex-col">
-              {/* Card Header Image */}
-              <div className="h-32 w-full relative">
+            <div className="bg-[#FDFCF8] rounded-2xl shadow-[0_-4px_28px_rgba(45,41,38,0.18)] border border-[#2D2926]/10 overflow-hidden flex flex-col max-h-[52vh] sm:max-h-[480px]">
+              {/* Card Header Image - Sleek banner */}
+              <div className="h-20 sm:h-24 w-full relative shrink-0">
                 <img
                   src={activePlace.imageUrl}
                   alt={activePlace.name}
                   className="w-full h-full object-cover"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
 
                 {/* Close button */}
                 <button
@@ -2124,87 +2187,67 @@ export const MapView: React.FC<MapViewProps> = ({
                     e.stopPropagation();
                     onSelectPlace(null);
                   }}
-                  className="absolute top-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all cursor-pointer z-20 active:scale-90"
-                  title="Đóng để xem lại danh sách"
+                  className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all cursor-pointer z-20 active:scale-90"
+                  title="Đóng"
                   id="btn-close-place-card"
                 >
-                  <span className="material-symbols-outlined text-[18px]">close</span>
+                  <span className="material-symbols-outlined text-[16px]">close</span>
                 </button>
 
                 {/* Bookmark Save button */}
                 <button
                   onClick={() => onSavePlaceToggle(activePlace.id)}
-                  className={`absolute top-3 right-13 w-8 h-8 rounded-full flex items-center justify-center shadow-sm transition-transform active:scale-90 ${
+                  className={`absolute top-2 right-10 w-7 h-7 rounded-full flex items-center justify-center shadow-xs transition-transform active:scale-90 ${
                     isSaved ? 'bg-[#00A7CB] text-white' : 'bg-white/90 text-[#2D2926]'
                   }`}
                   title="Lưu quán"
                 >
-                  <span className="material-symbols-outlined text-[18px] fill">bookmark</span>
+                  <span className="material-symbols-outlined text-[16px] fill">bookmark</span>
                 </button>
 
                 {/* Opportunity Type / Visited Pill on Image */}
-                <div className="absolute bottom-3 left-3 flex items-center gap-1.5 flex-wrap">
+                <div className="absolute bottom-2 left-2 flex items-center gap-1 flex-wrap">
                   {isPlaceVisited ? (
-                    <span className="bg-[#10B981] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
+                    <span className="bg-[#10B981] text-white font-heading text-[10px] font-bold px-2 py-0.2 rounded-full shadow-2xs flex items-center gap-0.5">
                       <span>✓ Đã chinh phục</span>
                     </span>
-                  ) : (() => {
-                    const vId = activePlace.id || (activePlace as any).providerPlaceId || activePlace.name;
-                    const placeHotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(activePlace, hotnessSnapshot.calculatedAt);
-                    if (placeHotness.isHot) {
-                      return (
-                        <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white font-heading text-xs font-bold px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                          <span>🔥</span>
-                          <span>{placeHotness.badgeLabel || 'Đang Hot (24h)'}</span>
-                        </span>
-                      );
-                    }
-                    return (
-                      <span className="bg-black/60 backdrop-blur-md text-white font-heading text-xs font-semibold px-2.5 py-0.5 rounded-full border border-white/20 flex items-center gap-1">
-                        <span>🔍 Chưa khám phá (+50 XP)</span>
-                      </span>
-                    );
-                  })()}
-
-                  {activeOpportunity?.type === 'SCOUT_WINDOW' && !isPlaceVisited && (
-                    <span className="bg-[#2EC4B6] text-white font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                      <span>🥇 First Verifier</span>
+                  ) : placeHotness.isHot ? (
+                    <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white font-heading text-[10px] font-bold px-2 py-0.2 rounded-full shadow-2xs flex items-center gap-0.5">
+                      <span>🔥 {placeHotness.badgeLabel || 'Hot 24h'}</span>
+                    </span>
+                  ) : (
+                    <span className="bg-black/60 backdrop-blur-md text-white font-heading text-[10px] font-medium px-2 py-0.2 rounded-full border border-white/20 flex items-center gap-0.5">
+                      <span>🔍 +50 XP</span>
                     </span>
                   )}
 
-                  {activeOpportunity?.type === 'QUEST_MATCH' && !isPlaceVisited && (
-                    <span className="bg-[#FF9F1C] text-[#2D2926] font-heading text-xs font-black px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                      <span>🗺️ Khớp Hành trình</span>
+                  {activeOpportunity?.type === 'SCOUT_WINDOW' && !isPlaceVisited && (
+                    <span className="bg-[#2EC4B6] text-white font-heading text-[10px] font-bold px-2 py-0.2 rounded-full shadow-2xs">
+                      🥇 First Verifier
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Card Body */}
-              <div className="p-4 flex flex-col gap-3">
+              {/* Card Body with smooth internal scroll if content exceeds max-height */}
+              <div className="p-3 flex flex-col gap-2 overflow-y-auto">
                 {/* Title & Basic Meta */}
                 <div>
-                  <div className="flex justify-between items-start mb-0.5">
-                    <h2 className="font-heading text-lg font-bold text-[#2D2926]">
+                  <div className="flex justify-between items-start gap-2">
+                    <h2 className="font-heading text-base font-bold text-[#2D2926] leading-tight truncate">
                       {activePlace.name}
                     </h2>
                     {hasRealCommunityProof ? (
-                      <div className="flex items-center gap-1 bg-[#F4F4F0] px-2 py-0.5 rounded-md" title="Đánh giá từ cộng đồng thực tế">
-                        <span className="material-symbols-outlined text-[#FF6B35] text-[15px] fill">
-                          star
-                        </span>
+                      <div className="flex items-center gap-1 bg-[#F4F4F0] px-1.5 py-0.5 rounded-md shrink-0" title="Đánh giá">
+                        <span className="material-symbols-outlined text-[#FF6B35] text-[13px] fill">star</span>
                         <span className="font-heading text-xs font-bold text-[#2D2926]">
                           {activePlace.rating || '4.5'}
                         </span>
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-1 bg-[#F4F4F0] px-2 py-0.5 rounded-md text-[11px] font-heading font-medium text-stone-500">
-                        <span>Chưa có review</span>
-                      </div>
-                    )}
+                    ) : null}
                   </div>
 
-                  <p className="text-xs text-[#594139] flex items-center gap-1.5 font-medium">
+                  <p className="text-[11px] text-[#594139] flex items-center gap-1.5 font-medium mt-0.5">
                     <span>{activePlace.categoryLabel || activePlace.district}</span>
                     <span className="w-1 h-1 bg-[#8D7168]/40 rounded-full"></span>
                     <span>{activePlace.priceBand || '35k–55k'}</span>
@@ -2215,273 +2258,129 @@ export const MapView: React.FC<MapViewProps> = ({
                   </p>
                 </div>
 
-                {/* 24h Hotness and Media Reviews Spotlight */}
-                {(() => {
-                  const vId = activePlace.id || (activePlace as any).providerPlaceId || activePlace.name;
-                  const placeHotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(activePlace, hotnessSnapshot.calculatedAt);
-                  if (placeHotness.isHot && !isPlaceVisited) {
-                    return (
-                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200/80 rounded-2xl p-2.5 flex flex-col gap-1.5 shadow-xs">
-                        <div className="flex items-center justify-between text-[10px] font-heading font-extrabold text-orange-800">
-                          <span className="flex items-center gap-1">
-                            <span>🔥 XU HƯỚNG ẨM THỰC 24H</span>
-                          </span>
-                          <span className="text-orange-600 font-semibold flex items-center gap-1">
-                            <span>🔄 Tự cập nhật: Còn {formatTimeUntilNext24hUpdate(hotnessSnapshot.nextUpdateAt)}</span>
-                          </span>
-                        </div>
-
-                        {placeHotness.pressMention && (
-                          <div className="text-xs text-stone-800 flex flex-col gap-0.5 bg-white/80 p-2 rounded-xl border border-orange-100">
-                            <span className="font-bold text-orange-950 flex items-center gap-1">
-                              <span>📰 {placeHotness.pressMention.source}:</span>
-                              <span className="font-normal italic text-stone-700">"{placeHotness.pressMention.headline}"</span>
-                            </span>
-                          </div>
-                        )}
-
-                        {placeHotness.reasons.length > 0 && !placeHotness.pressMention && (
-                          <div className="text-xs text-stone-800 flex items-center gap-1.5 bg-white/80 p-1.5 rounded-xl border border-orange-100 font-medium">
-                            <span>⭐</span>
-                            <span>{placeHotness.reasons[0]}</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-
-                {/* Visited Status / Objective Highlight */}
-                {isPlaceVisited ? (
-                  <div className="bg-[#ECFDF5] border border-[#10B981]/30 rounded-2xl p-2.5 flex items-center gap-2 text-xs font-heading text-[#065F46] font-bold">
-                    <span className="text-base">🎉</span>
-                    <span>Bạn đã check-in quán này & hoàn thành thử thách!</span>
+                {/* 24h Hotness / Press compact line */}
+                {placeHotness.isHot && !isPlaceVisited && placeHotness.pressMention && (
+                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200/70 rounded-xl p-1.5 text-[11px] text-orange-950 flex items-center justify-between gap-1">
+                    <span className="truncate">
+                      <strong>📰 {placeHotness.pressMention.source}:</strong> <span className="italic">"{placeHotness.pressMention.headline}"</span>
+                    </span>
                   </div>
-                ) : (
-                  <div className="bg-[#FAF9F5] rounded-2xl p-3 border border-[#2D2926]/8 flex flex-col gap-2">
-                    <div className="text-[10px] font-heading uppercase tracking-wider font-extrabold text-[#594139]/70 flex items-center gap-1">
-                      <span>💡 Điểm nổi bật:</span>
-                    </div>
+                )}
 
-                    {/* Render Deterministic Reasons */}
-                    {activeOpportunity?.reasons && activeOpportunity.reasons.length > 0 ? (
-                      activeOpportunity.reasons.map((reason, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-start gap-2 bg-white p-2 rounded-xl border border-[#2D2926]/5 shadow-xs"
-                        >
-                          <span className="text-base shrink-0">{reason.icon}</span>
-                          <div className="flex flex-col">
-                            <span className="text-xs font-bold text-[#2D2926]">{reason.text}</span>
-                            {reason.highlight && (
-                              <span className="text-[11px] font-semibold text-[#FF6B35]">
-                                {reason.highlight}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-xs text-[#2D2926] flex items-center gap-1.5">
-                        <span>📍</span>
-                        <span>Địa điểm ẩm thực tại {activePlace.district} • Chờ bạn khám phá</span>
-                      </div>
-                    )}
-
-                    {/* Friend Echo Details if any */}
-                    {activeOpportunity?.type === 'FRIEND_ECHO' && activeOpportunity.friendActivity && (
-                      <div className="pt-1 text-[11px] text-[#594139] border-t border-[#2D2926]/5 flex items-center justify-between">
-                        <span className="flex items-center gap-1">
-                          <span className="font-bold text-[#2D2926]">🔗 Dấu chân bạn bè:</span> {activeOpportunity.friendActivity.chainCount || 1} bạn bè đã ghé đây
+                {/* 🎟️ Compact Active Deal Voucher */}
+                {deal && (
+                  <div className="bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-200/80 rounded-xl p-2 flex items-center justify-between gap-2 shadow-2xs">
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs">🎟️</span>
+                        <strong className="text-[11px] font-heading font-bold text-rose-900 truncate">
+                          {deal.title}
+                        </strong>
+                        <span className="bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0">
+                          {deal.discountLabel}
                         </span>
                       </div>
+                      <span className="text-[10px] text-stone-500 truncate mt-0.5">
+                        Mã: <strong className="font-mono text-rose-700">{deal.code}</strong> • {deal.description}
+                      </span>
+                    </div>
+
+                    {deal.code && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (navigator?.clipboard?.writeText) {
+                            navigator.clipboard.writeText(deal.code);
+                          }
+                          setCopiedDealCode(deal.code);
+                          setTimeout(() => setCopiedDealCode(null), 2500);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[10.5px] font-heading font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                          copiedDealCode === deal.code
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-rose-600 hover:bg-rose-700 text-white active:scale-95'
+                        }`}
+                        id="btn-copy-deal-code"
+                      >
+                        {copiedDealCode === deal.code ? '✓ Đã lưu' : 'Copy mã'}
+                      </button>
                     )}
                   </div>
                 )}
 
-                {/* 🎟️ Active Deal & Voucher Coupon Section */}
-                {(() => {
-                  const deal = (activePlace as any).activeDeal;
-                  if (!deal) return null;
-                  return (
-                    <div className="bg-gradient-to-br from-rose-50/95 via-amber-50/90 to-orange-50/95 border border-rose-200/90 rounded-2xl p-3.5 flex flex-col gap-2.5 shadow-xs relative overflow-hidden">
-                      {/* Deal Header */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-base">🎟️</span>
-                          <span className="text-[11px] font-heading font-black text-rose-800 uppercase tracking-wide truncate">
-                            {deal.channelLabel || 'MÃ ƯU ĐÃI THỰC TẾ'}
-                          </span>
-                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full shrink-0">
-                            ✓ Thật 100%
-                          </span>
-                        </div>
-                        <span className="bg-gradient-to-r from-rose-500 to-orange-500 text-white font-heading text-[10.5px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs shrink-0">
-                          {deal.discountLabel}
-                        </span>
-                      </div>
-
-                      {/* Deal Description & Title */}
-                      <div className="flex flex-col gap-1">
-                        <h4 className="text-xs sm:text-[13px] font-heading font-bold text-stone-900 leading-snug">
-                          {deal.title}
-                        </h4>
-                        <p className="text-[11px] text-stone-600 leading-normal">
-                          {deal.description}
-                        </p>
-                      </div>
-
-                      {/* Terms / How to use */}
-                      <div className="bg-white/80 rounded-xl p-2 border border-rose-200/60 flex flex-col gap-1 text-[10.5px]">
-                        <div className="flex items-center gap-1 text-stone-700 font-medium">
-                          <span className="text-xs">💡</span>
-                          <span><strong>Cách dùng:</strong> {deal.howToUse || 'Đọc mã cho thu ngân trước khi gọi món/in bill hoặc nhập vào app khi đặt.'}</span>
-                        </div>
-                        {deal.minBill && (
-                          <div className="text-[10px] text-stone-500 font-medium flex items-center gap-1">
-                            <span>🏷️</span>
-                            <span>Áp dụng đơn từ <strong>{deal.minBill.toLocaleString('vi-VN')}đ</strong></span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Code & Actions */}
-                      {deal.code && (
-                        <div className="flex items-center justify-between pt-1 gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-stone-500 font-semibold">Mã:</span>
-                            <span className="font-mono font-black text-xs bg-white text-rose-700 px-2.5 py-1 rounded-lg border border-rose-300 tracking-wider shadow-2xs select-all">
-                              {deal.code}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            {deal.actionUrl && (
-                              <a
-                                href={deal.actionUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-2.5 py-1 rounded-full text-[11px] font-heading font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-2xs flex items-center gap-1 transition-all"
-                              >
-                                <span>Mở app ↗</span>
-                              </a>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (navigator?.clipboard?.writeText) {
-                                  navigator.clipboard.writeText(deal.code);
-                                }
-                                setCopiedDealCode(deal.code);
-                                setTimeout(() => setCopiedDealCode(null), 2500);
-                              }}
-                              className={`px-3 py-1 rounded-full text-[11px] font-heading font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                                copiedDealCode === deal.code
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-rose-600 hover:bg-rose-700 text-white shadow-2xs active:scale-95'
-                              }`}
-                              id="btn-copy-deal-code"
-                            >
-                              {copiedDealCode === deal.code ? (
-                                <>
-                                  <span>✓</span>
-                                  <span>Đã lưu mã!</span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="material-symbols-outlined text-[14px]">content_copy</span>
-                                  <span>Sao chép mã</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {/* Distance & Address Info */}
-                <div className="flex items-center justify-between text-xs text-[#594139] bg-white p-2.5 rounded-xl border border-[#2D2926]/5">
-                  <div className="flex items-center gap-1.5 font-heading font-bold text-[#2D2926]">
-                    <span className="material-symbols-outlined text-[#FF6B35] text-[18px]">near_me</span>
+                {/* Distance & Address */}
+                <div className="flex items-center justify-between text-[11px] text-[#594139] bg-[#FAF9F5] p-2 rounded-xl border border-[#2D2926]/5">
+                  <div className="flex items-center gap-1 font-heading font-bold text-[#2D2926]">
+                    <span className="material-symbols-outlined text-[#FF6B35] text-[15px]">near_me</span>
                     <span>{formattedDistance}</span>
                   </div>
-                  <span className="text-[11px] truncate max-w-[200px] text-[#594139]">
+                  <span className="text-[10.5px] truncate max-w-[220px] text-[#594139]">
                     {activePlace.address}
                   </span>
                 </div>
+              </div>
 
-                {/* Dynamic Action Buttons */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      if (activeOpportunity) {
-                        handleOpportunityAction(activeOpportunity);
-                      } else {
-                        onNavigateToCamera(activePlace);
-                      }
-                    }}
-                    className={`flex-1 h-11 rounded-full font-heading text-xs font-bold shadow-md flex items-center justify-center gap-1.5 active:scale-95 transition-all text-white cursor-pointer ${
-                      activeOpportunity?.type === 'SCOUT_WINDOW'
-                        ? 'bg-[#2EC4B6] hover:bg-[#2EC4B6]/90 shadow-[#2EC4B6]/30'
-                        : activeOpportunity?.type === 'QUEST_MATCH'
-                        ? 'bg-[#FF9F1C] hover:bg-[#FF9F1C]/90 shadow-[#FF9F1C]/30 text-[#2D2926]'
-                        : 'bg-[#FF6B35] hover:bg-[#FF6B35]/90 shadow-[#FF6B35]/30'
-                    }`}
-                    id="btn-smart-cta"
-                  >
-                    {isPlaceVisited ? (
-                      <>
-                        <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-                        <span>Chụp thêm Bite 📸</span>
-                      </>
-                    ) : activeOpportunity?.type === 'SCOUT_WINDOW' ? (
-                      <>
-                        <span className="material-symbols-outlined text-[18px]">verified</span>
-                        <span>Đi xác minh →</span>
-                      </>
-                    ) : activeOpportunity?.type === 'QUEST_MATCH' ? (
-                      <>
-                        <span className="material-symbols-outlined text-[18px]">flag</span>
-                        <span>Mở khóa thử thách →</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-                        <span>Chụp Bite check-in (+50 XP) 📸</span>
-                      </>
-                    )}
-                  </button>
+              {/* Compact Dynamic Action Bar */}
+              <div className="p-2.5 bg-white border-t border-[#2D2926]/5 flex gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    if (activeOpportunity) {
+                      handleOpportunityAction(activeOpportunity);
+                    } else {
+                      onNavigateToCamera(activePlace);
+                    }
+                  }}
+                  className={`flex-1 h-9 rounded-xl font-heading text-xs font-bold shadow-xs flex items-center justify-center gap-1 active:scale-95 transition-all text-white cursor-pointer ${
+                    activeOpportunity?.type === 'SCOUT_WINDOW'
+                      ? 'bg-[#2EC4B6] hover:bg-[#2EC4B6]/90'
+                      : activeOpportunity?.type === 'QUEST_MATCH'
+                      ? 'bg-[#FF9F1C] hover:bg-[#FF9F1C]/90 text-[#2D2926]'
+                      : 'bg-[#FF6B35] hover:bg-[#FF6B35]/90'
+                  }`}
+                  id="btn-smart-cta"
+                >
+                  <span className="material-symbols-outlined text-[16px]">photo_camera</span>
+                  <span>{isPlaceVisited ? 'Chụp thêm 📸' : 'Chụp check-in (+50 XP)'}</span>
+                </button>
 
-                  {/* External Directions */}
-                  <button
-                    onClick={() => {
-                      const googlePlaceId =
-                        activePlace.googlePlaceId ||
-                        (activePlace.providerPlaceId?.startsWith('ChIJ')
-                          ? activePlace.providerPlaceId
-                          : undefined);
+                {/* External Directions */}
+                <button
+                  onClick={() => {
+                    const googlePlaceId =
+                      activePlace.googlePlaceId ||
+                      (activePlace.providerPlaceId?.startsWith('ChIJ')
+                        ? activePlace.providerPlaceId
+                        : undefined);
 
-                      const googleMapsUrl = buildGoogleMapsDirectionsUrl({
-                        name: activePlace.name,
-                        address: activePlace.address,
-                        latitude: activePlace.latitude,
-                        longitude: activePlace.longitude,
-                        googlePlaceId,
-                      });
-                      window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
-                    }}
-                    className="px-4 bg-white border border-[#2D2926]/10 hover:bg-[#F4F4F0] text-[#2D2926] h-11 rounded-full font-heading text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer"
-                    title="Chỉ đường"
-                    id="btn-directions"
-                  >
-                    <span className="material-symbols-outlined text-[18px] text-[#FF6B35]">directions</span>
-                    <span>Chỉ đường</span>
-                  </button>
-                </div>
+                    const googleMapsUrl = buildGoogleMapsDirectionsUrl({
+                      name: activePlace.name,
+                      address: activePlace.address,
+                      latitude: activePlace.latitude,
+                      longitude: activePlace.longitude,
+                      googlePlaceId,
+                    });
+                    window.open(googleMapsUrl, '_blank', 'noopener,noreferrer');
+                  }}
+                  className="px-2.5 bg-white border border-[#2D2926]/10 hover:bg-[#F4F4F0] text-[#2D2926] h-9 rounded-xl font-heading text-xs font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer shrink-0"
+                  title="Chỉ đường"
+                  id="btn-directions"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-[#FF6B35]">directions</span>
+                  <span className="hidden sm:inline">Chỉ đường</span>
+                </button>
+
+                {/* Smart Compare Button */}
+                <button
+                  onClick={() => {
+                    handleOpenComparator([activePlace]);
+                  }}
+                  className="px-2.5 bg-amber-50 border border-amber-300 hover:bg-amber-100 text-amber-900 h-9 rounded-xl font-heading text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform cursor-pointer shrink-0"
+                  title="So sánh với quán khác"
+                  id="btn-place-compare"
+                >
+                  <span>⚖️</span>
+                  <span>So sánh</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2635,12 +2534,39 @@ export const MapView: React.FC<MapViewProps> = ({
         places={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
         userLocation={referenceLocation}
         selectedRouteResult={selectedTrafficRoute}
+        onOpenComparator={(initials) => {
+          setShowTrafficSheet(false);
+          handleOpenComparator(initials);
+        }}
         onSelectRoute={(route) => {
           setSelectedTrafficRoute(route);
           if (route.place) {
             handleFlyTo(route.place.latitude, route.place.longitude, 15.5);
             onSelectPlace(route.place);
           }
+        }}
+      />
+
+      {/* 13. ⚖️ Smart Multi-Venue & Route Comparator Modal */}
+      <SmartVenueComparatorModal
+        isOpen={showComparatorModal}
+        onClose={() => setShowComparatorModal(false)}
+        places={allLoadedVenues.length > 0 ? allLoadedVenues : places}
+        userLocation={referenceLocation}
+        initialSelectedVenues={comparatorInitialVenues}
+        onSelectDestination={(venue, route) => {
+          setShowComparatorModal(false);
+          if (route) {
+            setSelectedTrafficRoute(route);
+          }
+          if ('googlePlaceId' in venue || 'isPromoted' in venue) {
+            onSelectPlace(venue as Place);
+            setSelectedBackgroundPOI(null);
+          } else {
+            onSelectPlace(null);
+            setSelectedBackgroundPOI(venue as UnifiedPlace);
+          }
+          handleFlyTo(venue.latitude, venue.longitude, 16.5);
         }}
       />
     </div>

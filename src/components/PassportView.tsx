@@ -10,8 +10,351 @@ interface PassportViewProps {
   onOpenKnowledgeQuest?: (trackId: KnowledgeTrackId) => void;
 }
 
+const DISTRICT_PASSPORTS: Record<string, DistrictPassport> = {
+  cau_giay: {
+    id: 'cau_giay',
+    districtName: 'Cầu Giấy',
+    subtitle: 'Khám phá thiên đường ẩm thực sinh viên & ngõ phố 😋',
+    coverImage: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&auto=format&fit=crop&q=80',
+    levelTitle: 'Thực thần Cầu Giấy',
+    currentLevel: 12,
+    xp: 780,
+    maxXp: 1000,
+    challenges: [
+      {
+        id: 'cg_1',
+        title: 'Một quán bún cá / bún đậu',
+        icon: '🍜',
+        category: 'noodles',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành lúc 08:30 sáng nay',
+        rewardXp: 50,
+      },
+      {
+        id: 'cg_2',
+        title: 'Cơm tấm / Cơm niêu ngõ',
+        icon: '🍛',
+        category: 'rice',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 12/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'cg_3',
+        title: 'Quán cà phê ngõ Tô Hiệu',
+        icon: '☕',
+        category: 'coffee',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 10/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'cg_4',
+        title: 'Chè bưởi / Tào phớ Xuân Thủy',
+        icon: '🍮',
+        category: 'dessert',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 08/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'cg_5',
+        title: 'Quán ăn sâu ngõ Trần Quốc Hoàn',
+        icon: '🛵',
+        type: 'alley',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'cg_6',
+        title: 'Phát hiện một quán mới ở Cầu Giấy',
+        icon: '✨',
+        type: 'new_spot',
+        isCompleted: false,
+        rewardXp: 100,
+      },
+    ],
+  },
+  dong_da: {
+    id: 'dong_da',
+    districtName: 'Đống Đa',
+    subtitle: 'Thiên đường ăn vặt Chùa Láng & phố Ốc Đặng Văn Ngữ 🦪',
+    coverImage: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80',
+    levelTitle: 'Chiến thần Chùa Láng',
+    currentLevel: 8,
+    xp: 520,
+    maxXp: 800,
+    challenges: [
+      {
+        id: 'dd_1',
+        title: 'Ốc luộc / Ốc hương Đặng Văn Ngữ',
+        icon: '🦪',
+        category: 'street_food',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 14/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'dd_2',
+        title: 'Bánh mì nướng muối ớt Chùa Láng',
+        icon: '🥖',
+        category: 'street_food',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 11/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'dd_3',
+        title: 'Cà phê ban công Hồ Đắc Di',
+        icon: '☕',
+        category: 'coffee',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 09/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'dd_4',
+        title: 'Nem chua rán ngõ Tôn Thất Tùng',
+        icon: '🍢',
+        category: 'street_food',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 04/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'dd_5',
+        title: 'Mì vằn thắn Khâm Thiên',
+        icon: '🍜',
+        category: 'noodles',
+        type: 'category',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'dd_6',
+        title: 'First Bite quán mới Đống Đa',
+        icon: '✨',
+        type: 'new_spot',
+        isCompleted: false,
+        rewardXp: 100,
+      },
+    ],
+  },
+  ba_dinh: {
+    id: 'ba_dinh',
+    districtName: 'Ba Đình',
+    subtitle: 'Nét thanh lịch Trúc Bạch, Phở cuốn & Quán xưa Quán Thánh ✨',
+    coverImage: 'https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=800&auto=format&fit=crop&q=80',
+    levelTitle: 'Người sành Ba Đình',
+    currentLevel: 5,
+    xp: 290,
+    maxXp: 600,
+    challenges: [
+      {
+        id: 'bd_1',
+        title: 'Phở cuốn / Phở chiên phồng Ngũ Xã',
+        icon: '🌯',
+        category: 'noodles',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 15/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'bd_2',
+        title: 'Cà phê view Trúc Bạch ngắm hoàng hôn',
+        icon: '☕',
+        category: 'coffee',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 07/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'bd_3',
+        title: 'Cháo sườn sụn Đội Cấn',
+        icon: '🥣',
+        category: 'street_food',
+        type: 'category',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'bd_4',
+        title: 'Bún chả gia truyền Kim Mã',
+        icon: '🥓',
+        category: 'noodles',
+        type: 'category',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'bd_5',
+        title: 'Quán trà cổ điển ngõ Vạn Bảo',
+        icon: '🍵',
+        category: 'coffee',
+        type: 'alley',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'bd_6',
+        title: 'First Bite quán mới Ba Đình',
+        icon: '✨',
+        type: 'new_spot',
+        isCompleted: false,
+        rewardXp: 100,
+      },
+    ],
+  },
+  hoan_kiem: {
+    id: 'hoan_kiem',
+    districtName: 'Hoàn Kiếm',
+    subtitle: 'Tinh hoa 36 Phố Phường cổ & Hương vị Phở Bát Đàn trứ danh 🏮',
+    coverImage: 'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800&auto=format&fit=crop&q=80',
+    levelTitle: 'Thổ Địa Phố Cổ',
+    currentLevel: 10,
+    xp: 680,
+    maxXp: 900,
+    challenges: [
+      {
+        id: 'hk_1',
+        title: 'Phở bò gia truyền Bát Đàn',
+        icon: '🍜',
+        category: 'noodles',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 13/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'hk_2',
+        title: 'Cà phê trứng Giảng phố Nguyễn Hữu Huân',
+        icon: '☕',
+        category: 'coffee',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 10/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'hk_3',
+        title: 'Bún đậu mắm tôm ngõ Tràng Tiền',
+        icon: '🥢',
+        category: 'noodles',
+        type: 'alley',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 05/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'hk_4',
+        title: 'Kem Tràng Tiền dạo Hồ Gươm',
+        icon: '🍦',
+        category: 'dessert',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 01/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'hk_5',
+        title: 'Nộm bò khô phố Đinh Tiên Hoàng',
+        icon: '🥗',
+        category: 'street_food',
+        type: 'category',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'hk_6',
+        title: 'First Bite quán mới Hoàn Kiếm',
+        icon: '✨',
+        type: 'new_spot',
+        isCompleted: false,
+        rewardXp: 100,
+      },
+    ],
+  },
+  tay_ho: {
+    id: 'tay_ho',
+    districtName: 'Tây Hồ',
+    subtitle: 'Gió lộng Hồ Tây, Bánh tôm Thanh Niên & Cà phê hoàng hôn 🌅',
+    coverImage: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=800&auto=format&fit=crop&q=80',
+    levelTitle: 'Tín đồ Hồ Tây',
+    currentLevel: 7,
+    xp: 410,
+    maxXp: 700,
+    challenges: [
+      {
+        id: 'th_1',
+        title: 'Bánh tôm đường Thanh Niên',
+        icon: '🍤',
+        category: 'street_food',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 12/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'th_2',
+        title: 'Cà phê ngắm hoàng hôn Quảng Bá',
+        icon: '☕',
+        category: 'coffee',
+        type: 'category',
+        isCompleted: true,
+        completedAt: 'Hoàn thành ngày 08/05',
+        rewardXp: 50,
+      },
+      {
+        id: 'th_3',
+        title: 'Bún ốc nguội Tây Hồ',
+        icon: '🍜',
+        category: 'noodles',
+        type: 'category',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'th_4',
+        title: 'Bánh rán mặn Võng Thị',
+        icon: '🥟',
+        category: 'street_food',
+        type: 'alley',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'th_5',
+        title: 'Craft Beer & Pizza Âu Cơ',
+        icon: '🍕',
+        category: 'burger_western',
+        type: 'category',
+        isCompleted: false,
+        rewardXp: 50,
+      },
+      {
+        id: 'th_6',
+        title: 'First Bite quán mới Tây Hồ',
+        icon: '✨',
+        type: 'new_spot',
+        isCompleted: false,
+        rewardXp: 100,
+      },
+    ],
+  },
+};
+
 export const PassportView: React.FC<PassportViewProps> = ({
-  passport,
+  passport: initialPassport,
   user,
   onNavigateToExplore,
   onNavigateToCamera,
@@ -19,50 +362,48 @@ export const PassportView: React.FC<PassportViewProps> = ({
 }) => {
   const [selectedDistrict, setSelectedDistrict] = useState<string>('cau_giay');
 
-  const completedCount = passport.challenges.filter((c) => c.isCompleted).length;
-  const totalCount = passport.challenges.length;
-  const progressPercent = Math.round((passport.xp / passport.maxXp) * 100);
+  const activePassport =
+    selectedDistrict === 'cau_giay' && initialPassport
+      ? initialPassport
+      : DISTRICT_PASSPORTS[selectedDistrict] || initialPassport;
+
+  const completedCount = activePassport.challenges.filter((c) => c.isCompleted).length;
+  const totalCount = activePassport.challenges.length;
+  const progressPercent = Math.min(100, Math.round((activePassport.xp / activePassport.maxXp) * 100));
 
   const smartBiterProgress = user?.knowledgeProgress?.smartBiter;
   const biteGuardianProgress = user?.knowledgeProgress?.biteGuardian;
-  const isBothCompleted = (smartBiterProgress?.completed && biteGuardianProgress?.completed);
+  const isBothCompleted = smartBiterProgress?.completed && biteGuardianProgress?.completed;
+
+  const districtOptions = [
+    { key: 'cau_giay', label: 'Cầu Giấy', count: `${completedCount}/${totalCount}` },
+    { key: 'dong_da', label: 'Đống Đa', count: '4/6' },
+    { key: 'ba_dinh', label: 'Ba Đình', count: '2/6' },
+    { key: 'hoan_kiem', label: 'Hoàn Kiếm', count: '4/6' },
+    { key: 'tay_ho', label: 'Tây Hồ', count: '2/6' },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#FDFCF8] text-[#2D2926] pt-[calc(4.5rem+env(safe-area-inset-top,0px))] pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] px-4 max-w-lg mx-auto flex flex-col gap-6" id="passport-container">
+    <div
+      className="min-h-screen bg-[#FDFCF8] text-[#2D2926] pt-[calc(4.5rem+env(safe-area-inset-top,0px))] pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] px-4 max-w-lg mx-auto flex flex-col gap-6"
+      id="passport-container"
+    >
       {/* District Switcher Tabs */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        <button
-          onClick={() => setSelectedDistrict('cau_giay')}
-          className={`px-3.5 py-1.5 rounded-full text-xs font-heading font-bold transition-all ${
-            selectedDistrict === 'cau_giay'
-              ? 'bg-[#FF6B35] text-white shadow-sm'
-              : 'bg-[#F4F4F0] text-[#594139] hover:bg-[#E9E8E4]'
-          }`}
-        >
-          Cầu Giấy ({completedCount}/{totalCount})
-        </button>
-
-        <button
-          onClick={() => setSelectedDistrict('dong_da')}
-          className={`px-3.5 py-1.5 rounded-full text-xs font-heading font-bold transition-all ${
-            selectedDistrict === 'dong_da'
-              ? 'bg-[#FF6B35] text-white shadow-sm'
-              : 'bg-[#F4F4F0] text-[#594139] hover:bg-[#E9E8E4]'
-          }`}
-        >
-          Đống Đa (4/6)
-        </button>
-
-        <button
-          onClick={() => setSelectedDistrict('ba_dinh')}
-          className={`px-3.5 py-1.5 rounded-full text-xs font-heading font-bold transition-all ${
-            selectedDistrict === 'ba_dinh'
-              ? 'bg-[#FF6B35] text-white shadow-sm'
-              : 'bg-[#F4F4F0] text-[#594139] hover:bg-[#E9E8E4]'
-          }`}
-        >
-          Ba Đình (2/6)
-        </button>
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+        {districtOptions.map((opt) => (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => setSelectedDistrict(opt.key)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-heading font-bold whitespace-nowrap transition-all cursor-pointer ${
+              selectedDistrict === opt.key
+                ? 'bg-[#FF6B35] text-white shadow-sm scale-102'
+                : 'bg-[#F4F4F0] text-[#594139] hover:bg-[#E9E8E4]'
+            }`}
+          >
+            {opt.label} ({opt.key === selectedDistrict ? `${completedCount}/${totalCount}` : opt.count})
+          </button>
+        ))}
       </div>
 
       {/* Passport Header Card */}
@@ -70,14 +411,14 @@ export const PassportView: React.FC<PassportViewProps> = ({
         {/* Cover illustration / Photo */}
         <div className="aspect-[16/9] w-full rounded-2xl overflow-hidden bg-[#E9E8E4] relative shadow-inner mb-4">
           <img
-            src={passport.coverImage}
-            alt={passport.districtName}
-            className="w-full h-full object-cover"
+            src={activePassport.coverImage}
+            alt={activePassport.districtName}
+            className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#2D2926]/70 via-transparent to-transparent flex items-end p-3">
-            <div className="flex items-center gap-1.5 text-white font-heading text-xs font-bold">
+          <div className="absolute inset-0 bg-gradient-to-t from-[#2D2926]/75 via-transparent to-transparent flex items-end p-3.5">
+            <div className="flex items-center gap-1.5 text-white font-heading text-xs font-bold drop-shadow-sm">
               <span className="material-symbols-outlined text-[16px] text-[#FF6B35] fill">location_on</span>
-              <span>{passport.districtName}, HN</span>
+              <span>{activePassport.districtName}, Hà Nội</span>
             </div>
           </div>
         </div>
@@ -90,26 +431,26 @@ export const PassportView: React.FC<PassportViewProps> = ({
 
           <div>
             <h2 className="font-heading text-2xl font-black text-[#2D2926]">
-              Hành trình {passport.districtName}
+              Hành trình {activePassport.districtName}
             </h2>
             <p className="text-xs text-[#594139] flex items-center gap-1 mt-0.5">
-              <span>{passport.subtitle}</span>
+              <span>{activePassport.subtitle}</span>
             </p>
           </div>
 
           {/* Level Progression Box */}
-          <div className="bg-[#F4F4F0] p-3.5 rounded-2xl flex flex-col gap-2.5 mt-2">
+          <div className="bg-[#F4F4F0] p-3.5 rounded-2xl flex flex-col gap-2.5 mt-2 border border-[#2D2926]/5">
             <div className="flex justify-between items-end">
               <div className="flex items-baseline gap-2">
                 <span className="font-heading text-lg font-black text-[#FF6B35]">
-                  Lv. {passport.currentLevel}
+                  Lv. {activePassport.currentLevel}
                 </span>
                 <span className="font-heading text-[11px] font-bold text-[#594139] uppercase tracking-wider">
-                  {passport.levelTitle}
+                  {activePassport.levelTitle}
                 </span>
               </div>
               <span className="font-heading text-xs font-bold text-[#2D2926]">
-                {passport.xp} <span className="text-[#594139]/70 font-normal">/ {passport.maxXp} XP</span>
+                {activePassport.xp} <span className="text-[#594139]/70 font-normal">/ {activePassport.maxXp} XP</span>
               </span>
             </div>
 
@@ -164,7 +505,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
                     : 'bg-white border border-[#2D2926]/10'
                 }`}
               >
-                <span>🛡️</span>
+                <span>������️</span>
               </div>
 
               <div>
@@ -270,7 +611,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
         </div>
 
         <div className="flex flex-col gap-3">
-          {passport.challenges.map((ch) => (
+          {activePassport.challenges.map((ch) => (
             <div
               key={ch.id}
               onClick={() => {

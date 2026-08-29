@@ -26,6 +26,7 @@ export const DiscoveryPeekSheet: React.FC<DiscoveryPeekSheetProps> = ({
   onSelectVenue,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
   // 1. Hero Context Selection Logic
   const heroOpportunity = useMemo(() => {
@@ -52,6 +53,22 @@ export const DiscoveryPeekSheet: React.FC<DiscoveryPeekSheetProps> = ({
 
   const todayCount = todayOpportunities.length;
 
+  if (isDismissed) {
+    return (
+      <div className="absolute bottom-20 left-3 z-30 pointer-events-auto">
+        <button
+          type="button"
+          onClick={() => setIsDismissed(false)}
+          className="bg-white/90 hover:bg-white text-[#2D2926] backdrop-blur-md px-3 py-1.5 rounded-full shadow-md border border-stone-200 text-xs font-heading font-semibold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+          title="Mở gợi ý hôm nay"
+        >
+          <span>🎯</span>
+          <span>{todayCount} gợi ý</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className="absolute bottom-20 left-3 right-3 md:left-1/2 md:-translate-x-1/2 md:w-[480px] z-30 pointer-events-auto transition-all duration-300 ease-out"
@@ -61,15 +78,15 @@ export const DiscoveryPeekSheet: React.FC<DiscoveryPeekSheetProps> = ({
       {!isOpen && heroOpportunity && (
         <div
           onClick={() => setIsOpen(true)}
-          className="bg-white/96 hover:bg-white active:scale-[0.99] text-[#2D2926] backdrop-blur-md px-3.5 py-2.5 rounded-2xl sm:rounded-full shadow-[0_4px_24px_rgba(45,41,38,0.14)] border border-[#2D2926]/10 flex items-center justify-between gap-2.5 transition-all cursor-pointer group"
+          className="bg-white/96 hover:bg-white active:scale-[0.99] text-[#2D2926] backdrop-blur-md px-3 py-2 rounded-xl shadow-[0_4px_20px_rgba(45,41,38,0.12)] border border-stone-200/90 flex items-center justify-between gap-2.5 transition-all cursor-pointer group"
           id="smart-discovery-glance-bar"
           role="button"
           tabIndex={0}
           aria-label="Mở danh sách gợi ý khám phá hôm nay"
         >
           {/* Left Context Pulse Indicator */}
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#FF6B35] to-[#FFA07A] flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center text-xs font-bold shrink-0 border border-orange-200/60">
               {heroOpportunity.type === 'JOURNEY_MATCH'
                 ? '🎯'
                 : heroOpportunity.type === 'SCOUT'
@@ -79,45 +96,53 @@ export const DiscoveryPeekSheet: React.FC<DiscoveryPeekSheetProps> = ({
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 leading-tight">
-                <span className="font-heading text-[12px] sm:text-[13px] font-bold text-[#2D2926] truncate">
+                <span className="font-heading text-xs font-bold text-[#2D2926] truncate">
                   {heroOpportunity.title}
                 </span>
 
                 {heroOpportunity.type === 'JOURNEY_MATCH' && (
-                  <span className="bg-[#FF9F1C]/20 text-[#9E5D00] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full shrink-0">
+                  <span className="bg-amber-100 text-amber-900 text-[9px] font-heading font-bold px-1.5 py-0.2 rounded-full shrink-0">
                     Hành trình
                   </span>
                 )}
                 {heroOpportunity.type === 'SCOUT' && (
-                  <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full shrink-0">
+                  <span className="bg-teal-100 text-teal-900 text-[9px] font-heading font-bold px-1.5 py-0.2 rounded-full shrink-0">
                     First Bite
                   </span>
                 )}
               </div>
 
-              <p className="text-[11px] text-[#FF6B35] font-semibold truncate leading-tight mt-0.5">
+              <p className="text-[10px] text-stone-500 font-medium truncate leading-tight mt-0.5">
                 {heroOpportunity.reasonPrimary || `${todayCount} điểm đến hấp dẫn ${locationPhrase}`}
               </p>
             </div>
           </div>
 
-          {/* Right Action & Expand Trigger */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Right Action & Dismiss */}
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectVenue(heroOpportunity.venueId);
               }}
-              className="px-2.5 py-1 rounded-full bg-[#FF6B35]/10 hover:bg-[#FF6B35] text-[#FF6B35] hover:text-white font-heading text-[11px] font-bold transition-colors cursor-pointer"
+              className="px-2.5 py-1 rounded-full bg-[#FF6B35] hover:bg-[#E85D2A] text-white font-heading text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
               title="Xem vị trí trên bản đồ"
             >
-              Xem ngay
+              Xem
             </button>
 
-            <span className="w-6 h-6 rounded-full bg-[#2D2926]/5 flex items-center justify-center text-[#8D7168] group-hover:text-[#2D2926] transition-colors">
-              <span className="material-symbols-outlined text-[16px]">expand_less</span>
-            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDismissed(true);
+              }}
+              className="w-6 h-6 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400 hover:text-stone-600 transition-colors cursor-pointer"
+              title="Thu nhỏ"
+            >
+              <span className="material-symbols-outlined text-[14px]">close</span>
+            </button>
           </div>
         </div>
       )}

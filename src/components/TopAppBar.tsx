@@ -3,6 +3,7 @@ import React from 'react';
 interface TopAppBarProps {
   districtName?: string;
   xp?: number;
+  unreadCount?: number;
   onOpenMenu?: () => void;
   onOpenNotifications?: () => void;
   onOpenBiteBot?: () => void;
@@ -11,6 +12,7 @@ interface TopAppBarProps {
 export const TopAppBar: React.FC<TopAppBarProps> = ({
   districtName = 'Cầu Giấy',
   xp,
+  unreadCount = 0,
   onOpenMenu,
   onOpenNotifications,
   onOpenBiteBot,
@@ -94,7 +96,11 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           aria-label="Xem thông báo"
         >
           <span className="material-symbols-outlined text-[22px] sm:text-[24px]">notifications</span>
-          <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#FF6B35] ring-2 ring-[#FDFCF8]"></span>
+          {unreadCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#FF6B35] text-white text-[9px] font-heading font-black flex items-center justify-center ring-2 ring-[#FDFCF8]">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
         </button>
       </div>
     </header>

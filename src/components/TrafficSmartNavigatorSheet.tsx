@@ -24,6 +24,7 @@ interface TrafficSmartNavigatorSheetProps {
   userLocation: { latitude: number; longitude: number };
   onSelectRoute: (result: TrafficRouteResult) => void;
   selectedRouteResult?: TrafficRouteResult | null;
+  onOpenComparator?: (initialVenues?: Place[]) => void;
 }
 
 export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProps> = ({
@@ -33,6 +34,7 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
   userLocation,
   onSelectRoute,
   selectedRouteResult,
+  onOpenComparator,
 }) => {
   // Current real-world hour as initial default
   const currentRealHour = new Date().getHours();
@@ -465,13 +467,24 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
                   </div>
 
                   {/* Select Route Action */}
-                  <div className="flex items-center justify-between pt-0.5">
-                    <span className="text-[10px] text-[#8D7168]">
-                      {isSelected ? 'Đang hiển thị lộ trình trên bản đồ' : 'Chạm để xem lộ trình'}
-                    </span>
+                  <div className="flex items-center justify-between pt-0.5 gap-2">
+                    {onOpenComparator && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClose();
+                          onOpenComparator([result.place]);
+                        }}
+                        className="px-2.5 py-1 rounded-xl text-[11px] font-heading font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-all cursor-pointer flex items-center gap-1"
+                      >
+                        <span>⚖️</span>
+                        <span>So sánh quán này</span>
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ml-auto ${
                         isSelected
                           ? 'bg-emerald-600 text-white shadow-xs'
                           : 'bg-[#2D2926] text-white hover:bg-stone-800'
@@ -487,14 +500,28 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
         </div>
 
         {/* Footer Bottom Bar */}
-        <div className="p-3 bg-[#FAF9F5] border-t border-[#2D2926]/10 flex items-center justify-between">
-          <span className="text-[11px] text-[#8D7168]">
-            Đã phân tích lúc <strong className="text-[#2D2926]">{selectedHour}:00 ({currentHourWeather.conditionLabel})</strong>
-          </span>
+        <div className="p-3 bg-[#FAF9F5] border-t border-[#2D2926]/10 flex items-center justify-between gap-2">
+          {onOpenComparator ? (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenComparator(displayResults.slice(0, 3).map((r) => r.place));
+              }}
+              className="py-1.5 px-3 bg-amber-500 hover:bg-amber-600 text-white text-xs font-heading font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+            >
+              <span>⚖️</span>
+              <span>So sánh top quán</span>
+            </button>
+          ) : (
+            <span className="text-[11px] text-[#8D7168]">
+              Đã phân tích lúc <strong className="text-[#2D2926]">{selectedHour}:00 ({currentHourWeather.conditionLabel})</strong>
+            </span>
+          )}
           <button
             type="button"
             onClick={onClose}
-            className="py-1.5 px-4 bg-[#1C1917] text-white text-xs font-bold rounded-xl shadow-xs hover:bg-stone-800 cursor-pointer"
+            className="py-1.5 px-4 bg-[#1C1917] text-white text-xs font-bold rounded-xl shadow-xs hover:bg-stone-800 cursor-pointer ml-auto"
           >
             Đóng & Xem Bản Đồ
           </button>

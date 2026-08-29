@@ -115,22 +115,20 @@ export const FomoLiveTicker: React.FC<FomoLiveTickerProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="w-full bg-[#1C1917]/90 hover:bg-[#24201D]/95 backdrop-blur-md text-white rounded-2xl py-1.5 px-2.5 border border-amber-500/25 shadow-md flex items-center justify-between gap-2 transition-all">
+      <div className="w-full bg-[#1C1917]/85 hover:bg-[#1C1917]/95 backdrop-blur-md text-white rounded-full py-1 px-2.5 border border-white/10 shadow-xs flex items-center justify-between gap-2 transition-all">
         {/* Main Clickable Area */}
         <button
           type="button"
           onClick={handleClick}
-          className="flex-1 flex items-center gap-2 min-w-0 text-left cursor-pointer group"
+          className="flex-1 flex items-center gap-1.5 min-w-0 text-left cursor-pointer group"
         >
-          <div className="relative w-6 h-6 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-xs shadow-xs shrink-0">
-            <span>{currentEvent.icon}</span>
-          </div>
+          <span className="text-xs shrink-0">{currentEvent.icon}</span>
 
           <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-            <span className="font-heading text-xs font-bold text-amber-200 truncate group-hover:text-amber-300">
+            <span className="font-heading text-[11.5px] font-semibold text-stone-100 truncate group-hover:text-amber-300">
               {currentEvent.message}
             </span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/25 text-amber-300 font-bold border border-amber-500/30 shrink-0">
+            <span className="text-[8.5px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 shrink-0">
               {currentEvent.badge}
             </span>
           </div>
@@ -143,7 +141,7 @@ export const FomoLiveTicker: React.FC<FomoLiveTickerProps> = ({
             e.stopPropagation();
             setIsDismissed(true);
           }}
-          className="w-5 h-5 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center text-[10px] shrink-0 transition-colors cursor-pointer"
+          className="w-4.5 h-4.5 rounded-full hover:bg-stone-700/80 text-stone-400 hover:text-white flex items-center justify-center text-[9px] shrink-0 transition-colors cursor-pointer"
           title="Ẩn thông báo"
         >
           ✕

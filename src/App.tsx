@@ -39,6 +39,8 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PostBiteExperienceModal } from './components/PostBiteExperienceModal';
 import { BiteBotModal } from './components/BiteBotModal';
+import { NotificationCenterModal } from './components/NotificationCenterModal';
+import { AppNotification, getInitialNotifications } from './services/notificationService';
 import { PostBiteResultData } from './types';
 import { KnowledgeTrackId, KNOWLEDGE_TRACKS, META_KNOWLEDGE_TITLE } from './data/knowledgeQuestions';
 import { saveKnowledgeProgressToDb } from './services/firebaseDb';
@@ -76,7 +78,44 @@ export default function App() {
   const [authModalInitialMode, setAuthModalInitialMode] = useState<AuthMode>('entry');
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showBiteBotModal, setShowBiteBotModal] = useState(false);
+  const [showNotificationCenter, setShowNotificationCenter] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>(() =>
+    getInitialNotifications({ latitude: 21.0285, longitude: 105.7958 }, 'Cầu Giấy')
+  );
+  const [targetMapFocus, setTargetMapFocus] = useState<{ latitude: number; longitude: number; name?: string } | null>(null);
+  const [openTrafficSheetDirectly, setOpenTrafficSheetDirectly] = useState(false);
   const [postBiteResult, setPostBiteResult] = useState<PostBiteResultData | null>(null);
+
+  const unreadNotificationsCount = notifications.filter((n) => !n.isRead).length;
+
+  const handleMarkNotificationAsRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
+  };
+
+  const handleMarkAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  };
+
+  const handleDeleteNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const handleClearAllNotifications = () => {
+    setNotifications([]);
+  };
+
+  const addNotification = (notif: Omit<AppNotification, 'id' | 'timestamp' | 'timeFormatted' | 'isRead'>) => {
+    const newNotif: AppNotification = {
+      ...notif,
+      id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date(),
+      timeFormatted: 'Vừa xong',
+      isRead: false,
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+  };
 
   // Monitor Firebase Auth State
   useEffect(() => {
@@ -324,6 +363,21 @@ export default function App() {
 
     // Authoritative Post-Bite Experience state
     setPostBiteResult(checkinData);
+
+    // Also add to Notification Center
+    if (newBite) {
+      addNotification({
+        category: 'quest',
+        title: 'Check-in thành công! 🎉',
+        message: `Bạn vừa ghi nhận một trải nghiệm ẩm thực mới và nhận +${checkinData.earnedXp || 50} XP.`,
+        actionType: 'open_passport',
+        metadata: {
+          xpEarned: checkinData.earnedXp || 50,
+          placeName: newBite.placeName,
+        },
+      });
+    }
+
     setActiveTab('explore');
   };
 
@@ -441,6 +495,17 @@ export default function App() {
         const trackInfo = KNOWLEDGE_TRACKS[result.trackId];
 
         if (result.passed) {
+          addNotification({
+            category: 'achievement',
+            title: `Mở khóa huy hiệu: ${trackInfo.titleVi}`,
+            message: `Bạn đã vượt qua ${result.score}/${result.total} câu hỏi và nhận +${data.earnedXp || 100} XP!`,
+            actionType: 'open_profile',
+            metadata: {
+              xpEarned: data.earnedXp || 100,
+              badgeName: trackInfo.titleVi,
+            },
+          });
+
           setActiveToast({
             title: `🛡️ MỞ KHÓA HUY HIỆU: ${trackInfo.titleVi.toUpperCase()}!`,
             subtitle: `Bạn đã xuất sắc vượt qua ${result.score}/${result.total} câu hỏi thực tế. Đã mở khóa sticker & huy hiệu!`,
@@ -450,6 +515,13 @@ export default function App() {
 
           if (result.unlockedBoth || data.unlockedMetaTitle) {
             setTimeout(() => {
+              addNotification({
+                category: 'achievement',
+                title: 'Danh hiệu cao cấp mở khóa! 🏆',
+                message: `Bạn chính thức sở hữu danh hiệu "${META_KNOWLEDGE_TITLE}" trên hồ sơ cá nhân.`,
+                actionType: 'open_profile',
+              });
+
               setActiveToast({
                 title: '🏆 DANH HIỆU CAO CẤP MỞ KHÓA!',
                 subtitle: `Chúc mừng bạn đã mở khóa danh hiệu "${META_KNOWLEDGE_TITLE}" trên trang cá nhân!`,
@@ -468,20 +540,15 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen bg-[#FDFCF8] text-[#2D2926] font-sans select-none antialiased">
-      {/* 1. Global Top App Bar (Hidden in full-bleed Camera Capture mode) */}
+      {/* 1. Global Top App Bar (Shown across tabs, hidden only in full-bleed camera mode) */}
       {activeTab !== 'camera' && (
         <TopAppBar
           districtName={passport.districtName}
           xp={user.xp}
+          unreadCount={unreadNotificationsCount}
           onOpenMenu={() => setIsDrawerOpen(true)}
           onOpenBiteBot={() => setShowBiteBotModal(true)}
-          onOpenNotifications={() => {
-            setActiveToast({
-              title: 'Thông báo',
-              subtitle: 'Minh Anh vừa thả cảm xúc 🤤 vào bài viết Bún Cá Cô Lan của bạn!',
-              emoji: '🔔',
-            });
-          }}
+          onOpenNotifications={() => setShowNotificationCenter(true)}
         />
       )}
 
@@ -508,6 +575,11 @@ export default function App() {
               isRadarOpen={activeTab === 'radar'}
               onRadarOpenChange={(open) => setActiveTab(open ? 'radar' : 'explore')}
               onOpenBiteBot={() => setShowBiteBotModal(true)}
+              onOpenMenu={() => setIsDrawerOpen(true)}
+              onOpenNotifications={() => setShowNotificationCenter(true)}
+              targetMapFocus={targetMapFocus}
+              onClearTargetMapFocus={() => setTargetMapFocus(null)}
+              openTrafficSheetDirectly={openTrafficSheetDirectly}
             />
           </ErrorBoundary>
         )}
@@ -675,6 +747,33 @@ export default function App() {
           setSelectedPlace(place);
           setActiveTab('explore');
           setShowBiteBotModal(false);
+        }}
+      />
+
+      {/* 14. Standard, Sharp Notification Center (Traffic 5km, Quests, Achievements, Exploration) */}
+      <NotificationCenterModal
+        isOpen={showNotificationCenter}
+        onClose={() => setShowNotificationCenter(false)}
+        notifications={notifications}
+        onMarkAsRead={handleMarkNotificationAsRead}
+        onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+        onDeleteNotification={handleDeleteNotification}
+        onClearAllNotifications={handleClearAllNotifications}
+        onSelectTrafficHotspot={(hotspot) => {
+          setTargetMapFocus({
+            latitude: hotspot.latitude,
+            longitude: hotspot.longitude,
+            name: hotspot.name,
+          });
+          setActiveTab('explore');
+          setActiveToast({
+            title: 'Vị trí điểm nghẽn giao thông',
+            subtitle: `Đã di chuyển bản đồ đến: ${hotspot.name}`,
+            emoji: '🚦',
+          });
+        }}
+        onNavigateToTab={(tab) => {
+          setActiveTab(tab);
         }}
       />
     </div>

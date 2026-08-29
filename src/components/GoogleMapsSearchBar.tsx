@@ -28,6 +28,11 @@ interface GoogleMapsSearchBarProps {
   onSelectCategory?: (category: string) => void;
   onOpenFilter?: () => void;
   onOpenBiteBot?: () => void;
+  onOpenTraffic?: () => void;
+  onOpenComparator?: (initialVenues?: (Place | UnifiedPlace)[]) => void;
+  onOpenMenu?: () => void;
+  onOpenNotifications?: () => void;
+  userXp?: number;
   isLoading?: boolean;
 }
 
@@ -353,9 +358,18 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
   onSelectCategory,
   onOpenFilter,
   onOpenBiteBot,
+  onOpenTraffic,
+  onOpenComparator,
+  onOpenMenu,
+  onOpenNotifications,
+  userXp,
   isLoading = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
@@ -367,6 +381,65 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Voice Search / Speech Recognition handler
+  const handleToggleVoiceSearch = () => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setSpeechError('Trình duyệt chưa hỗ trợ tìm kiếm bằng giọng nói.');
+      setTimeout(() => setSpeechError(null), 3000);
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'vi-VN';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setSpeechError(null);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          onSearchQueryChange(transcript);
+          saveRecentSearch(transcript);
+          setIsOpen(true);
+        }
+        setIsListening(false);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('Speech recognition error:', event.error);
+        if (event.error !== 'no-speech') {
+          setSpeechError('Không nhận diện được giọng nói. Vui lòng thử lại!');
+          setTimeout(() => setSpeechError(null), 3000);
+        }
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.warn('Failed to start speech recognition', err);
+      setIsListening(false);
+    }
+  };
 
   // Save query to recent searches
   const saveRecentSearch = (query: string) => {
@@ -522,9 +595,15 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
   return (
     <div ref={containerRef} className="relative w-full" id="google-maps-search-container">
       {/* 1. Main Floating Search Bar Card */}
-      <div className="bg-white rounded-2xl h-12 px-3.5 flex items-center gap-2.5 shadow-[0_3px_14px_rgba(0,0,0,0.12)] border border-stone-200/90 hover:border-stone-300 focus-within:border-[#FF6B35] focus-within:ring-2 focus-within:ring-[#FF6B35]/20 transition-all">
-        {/* Search Icon */}
-        <span className="material-symbols-outlined text-stone-400 text-[20px] shrink-0 select-none">search</span>
+      <div className={`bg-white/98 backdrop-blur-md rounded-2xl h-12 px-3 flex items-center gap-2 shadow-[0_4px_20px_rgba(45,41,38,0.12)] border transition-all ${
+        isListening
+          ? 'border-red-500 ring-2 ring-red-500/25 bg-red-50/20'
+          : 'border-stone-200/90 hover:border-stone-300 focus-within:border-[#FF6B35] focus-within:ring-2 focus-within:ring-[#FF6B35]/20'
+      }`}>
+        {/* Left: Food / Map Pin Icon */}
+        <div className="w-7 h-7 rounded-full bg-[#FF6B35]/10 flex items-center justify-center shrink-0">
+          <span className="material-symbols-outlined text-[17px] text-[#FF6B35]">search</span>
+        </div>
 
         {/* Search Input */}
         <input
@@ -536,8 +615,8 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
             if (!isOpen) setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          placeholder="Tìm quán ăn, món ngon, khu vực Hà Nội..."
-          className="bg-transparent border-none focus:outline-none w-full text-[13.5px] font-heading font-medium text-stone-800 placeholder:text-stone-400"
+          placeholder={isListening ? 'Đang lắng nghe giọng nói...' : 'Tìm quán ăn, bún chả, cà phê...'}
+          className="bg-transparent border-none focus:outline-none w-full min-w-0 text-[13.5px] font-heading font-medium text-stone-800 placeholder:text-stone-400"
           id="input-google-maps-search"
           autoComplete="off"
           aria-label="Tìm kiếm trên BiteQuest"
@@ -559,35 +638,32 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
           </button>
         ) : null}
 
-        {/* Subtle Vertical Divider */}
-        <div className="w-[1px] h-5 bg-stone-200 shrink-0" />
-
-        {/* BiteBot AI Quick Button */}
-        {onOpenBiteBot && (
-          <button
-            type="button"
-            onClick={onOpenBiteBot}
-            className="w-8 h-8 rounded-full bg-orange-50 hover:bg-orange-100 text-[#FF6B35] flex items-center justify-center text-xs font-bold transition-all active:scale-95 shrink-0 cursor-pointer"
-            title="Hỏi trợ lý BiteBot AI"
-            aria-label="Mở BiteBot AI"
-          >
-            ✨
-          </button>
-        )}
-
-        {/* Quick Filter Toggle */}
-        {onOpenFilter && (
-          <button
-            type="button"
-            onClick={onOpenFilter}
-            className="w-8 h-8 rounded-full hover:bg-stone-100 text-stone-600 flex items-center justify-center transition-colors shrink-0 cursor-pointer"
-            title="Bộ lọc nâng cao"
-            aria-label="Bộ lọc danh mục"
-          >
-            <span className="material-symbols-outlined text-[19px]">tune</span>
-          </button>
-        )}
+        {/* Microphone Voice Search Button */}
+        <button
+          type="button"
+          onClick={handleToggleVoiceSearch}
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-95 shrink-0 cursor-pointer ${
+            isListening
+              ? 'bg-red-500 text-white animate-pulse shadow-xs shadow-red-500/50'
+              : 'hover:bg-stone-100 text-stone-500 hover:text-stone-800'
+          }`}
+          title={isListening ? 'Dừng ghi âm' : 'Tìm kiếm bằng giọng nói'}
+          aria-label="Tìm bằng giọng nói"
+          id="btn-voice-search"
+        >
+          <span className="material-symbols-outlined text-[19px]">
+            {isListening ? 'mic' : 'mic_none'}
+          </span>
+        </button>
       </div>
+
+      {/* Speech Error Banner */}
+      {speechError && (
+        <div className="absolute top-[calc(100%+4px)] left-0 right-0 z-50 bg-rose-50 border border-rose-200 text-rose-700 text-xs px-3 py-1.5 rounded-xl shadow-md animate-fade-in flex items-center justify-between">
+          <span>⚠️ {speechError}</span>
+          <button onClick={() => setSpeechError(null)} className="text-rose-500 hover:text-rose-800 text-xs">✕</button>
+        </div>
+      )}
 
       {/* 2. Google Maps-Style Autocomplete & Suggestion Dropdown */}
       {isOpen && (
@@ -595,6 +671,59 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
           className="absolute top-[calc(100%+6px)] left-0 right-0 z-50 bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-stone-200/90 overflow-hidden max-h-[75vh] flex flex-col animate-fade-in"
           id="google-maps-autocomplete-dropdown"
         >
+          {/* Quick Smart Actions Header */}
+          <div className="p-2 bg-gradient-to-r from-stone-50 via-white to-stone-50 border-b border-stone-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {onOpenTraffic && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenTraffic();
+                }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+              >
+                <span>🚦</span>
+                <span>Né tắc đường</span>
+              </button>
+            )}
+
+            {onOpenComparator && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenComparator();
+                }}
+                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+              >
+                <span>⚖️</span>
+                <span>So sánh các quán</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                onSearchQueryChange('Phở');
+                setIsOpen(true);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-heading font-medium shrink-0 transition-colors cursor-pointer"
+            >
+              🍜 Phở ngon
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onSearchQueryChange('Cà phê');
+                setIsOpen(true);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-heading font-medium shrink-0 transition-colors cursor-pointer"
+            >
+              ☕ Cà phê view đẹp
+            </button>
+          </div>
+
           {/* Scrollable Suggestion Body */}
           <div className="overflow-y-auto no-scrollbar py-2 divide-y divide-stone-100">
             {/* Case A: Active Search Results */}
@@ -605,43 +734,65 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
                     Kết quả gợi ý ({searchResults.length})
                   </div>
                   {searchResults.map((item) => (
-                    <button
+                    <div
                       key={item.id}
-                      type="button"
-                      onClick={() => handleSelectResult(item)}
-                      className="w-full px-3.5 py-2.5 flex items-center gap-3 hover:bg-stone-50 text-left transition-colors cursor-pointer active:bg-orange-50/50"
+                      className="w-full px-3.5 py-2 flex items-center justify-between hover:bg-stone-50 text-left transition-colors group"
                     >
-                      <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-sm shrink-0 text-stone-700">
-                        {item.categoryGlyph || (item.type === 'district' ? '📍' : '🍽️')}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-heading font-semibold text-stone-900 truncate">
-                            {item.title}
-                          </span>
-                          {item.type === 'district' && (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-heading font-bold bg-blue-50 text-blue-600 shrink-0">
-                              Khu vực
+                      <button
+                        type="button"
+                        onClick={() => handleSelectResult(item)}
+                        className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-sm shrink-0 text-stone-700">
+                          {item.categoryGlyph || (item.type === 'district' ? '📍' : '🍽️')}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-heading font-semibold text-stone-900 truncate">
+                              {item.title}
                             </span>
-                          )}
-                          {item.type === 'dish' && (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-heading font-bold bg-amber-50 text-amber-700 shrink-0">
-                              Món ngon
-                            </span>
+                            {item.type === 'district' && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-heading font-bold bg-blue-50 text-blue-600 shrink-0">
+                                Khu vực
+                              </span>
+                            )}
+                            {item.type === 'dish' && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-heading font-bold bg-amber-50 text-amber-700 shrink-0">
+                                Món ngon
+                              </span>
+                            )}
+                          </div>
+                          {item.subtitle && (
+                            <p className="text-[11.5px] text-stone-500 truncate mt-0.5">{item.subtitle}</p>
                           )}
                         </div>
-                        {item.subtitle && (
-                          <p className="text-[11.5px] text-stone-500 truncate mt-0.5">{item.subtitle}</p>
+                      </button>
+
+                      {/* Right actions: Distance & Quick Compare Button */}
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {typeof item.distanceMeters === 'number' && (
+                          <span className="text-[11px] font-medium text-[#FF6B35] font-heading">
+                            {item.distanceMeters < 1000
+                              ? `${item.distanceMeters}m`
+                              : `${(item.distanceMeters / 1000).toFixed(1)}km`}
+                          </span>
+                        )}
+                        {item.type === 'venue' && item.venue && onOpenComparator && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsOpen(false);
+                              onOpenComparator([item.venue!]);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10.5px] font-heading font-bold border border-amber-200 transition-all cursor-pointer"
+                            title="Thêm vào bảng so sánh"
+                          >
+                            ⚖️ So sánh
+                          </button>
                         )}
                       </div>
-                      {typeof item.distanceMeters === 'number' && (
-                        <span className="text-[11px] font-medium text-[#FF6B35] shrink-0 font-heading">
-                          {item.distanceMeters < 1000
-                            ? `${item.distanceMeters}m`
-                            : `${(item.distanceMeters / 1000).toFixed(1)}km`}
-                        </span>
-                      )}
-                    </button>
+                    </div>
                   ))}
                 </div>
               ) : (
