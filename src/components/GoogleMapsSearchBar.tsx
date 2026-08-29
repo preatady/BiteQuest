@@ -5,6 +5,7 @@ import { UnifiedPlace } from '../services/maps/types';
 import {
   CANONICAL_CATEGORIES,
   classifyVenue,
+  normalizeCategory,
   normalizeVietnameseText,
   getVenueSearchRelevance,
 } from '../services/maps/categoryNormalizer';
@@ -14,6 +15,12 @@ import {
   SearchIntent,
   isNaturalLanguageQuery,
 } from '../services/searchIntentService';
+import {
+  getSmartTypeaheadSuggestions,
+  executeSmartSearch,
+  SmartDecisionState,
+} from '../services/smartSearchDecisionEngine';
+import { SmartDecisionCard } from './SmartDecisionCard';
 
 export { parseSearchIntentWithGemini };
 
@@ -349,6 +356,104 @@ export const VIETNAM_DISCOVERY_LOCATIONS: Array<{
 // Backwards compatibility alias
 export const HANOI_DISCOVERY_LOCATIONS = VIETNAM_DISCOVERY_LOCATIONS;
 
+export interface MockIntentResult {
+  category: 'cafe' | 'hotpot' | 'noodle' | 'bbq' | 'fast_food' | 'rice' | 'all';
+  tag?: 'quiet' | 'dry_route' | 'aesthetic' | 'tasty_noodles' | 'spicy_noodle' | 'crispy_fast_food' | 'grilled_bbq' | string;
+}
+
+/**
+ * Instant Mock Intent Search Analyzer (Smoke & Mirrors for Demo)
+ * Analyzes natural language search query instantly on client-side with 0ms latency.
+ */
+export function mockAnalyzeIntent(query: string): MockIntentResult {
+  const raw = (query || '').toLowerCase().trim();
+  const norm = normalizeVietnameseText(raw);
+  if (!raw) return { category: 'all' };
+
+  // 1. Mì cay, mì, bún, phở, miến, hủ tiếu, ramen
+  if (
+    raw.includes('mì cay') ||
+    norm.includes('mi cay') ||
+    raw.includes('mì') ||
+    norm.includes('mi ') ||
+    norm.endsWith('mi') ||
+    raw.includes('bún') ||
+    norm.includes('bun') ||
+    raw.includes('phở') ||
+    norm.includes('pho') ||
+    raw.includes('hủ tiếu') ||
+    norm.includes('hu tieu') ||
+    raw.includes('miến') ||
+    norm.includes('mien') ||
+    raw.includes('ramen')
+  ) {
+    return { category: 'noodle', tag: raw.includes('mì cay') || norm.includes('mi cay') ? 'spicy_noodle' : 'tasty_noodles' };
+  }
+
+  // 2. If query includes "học" or "làm việc" or "yên tĩnh"
+  if (
+    raw.includes('học') ||
+    norm.includes('hoc') ||
+    raw.includes('làm việc') ||
+    norm.includes('lam viec') ||
+    raw.includes('yên tĩnh') ||
+    norm.includes('yen tinh')
+  ) {
+    return { category: 'cafe', tag: 'quiet' };
+  }
+
+  // 3. Cafe / Cà phê / Trà
+  if (
+    raw.includes('cafe') ||
+    raw.includes('cà phê') ||
+    norm.includes('ca phe') ||
+    raw.includes('coffee') ||
+    raw.includes('trà') ||
+    norm.includes('tra ') ||
+    norm.endsWith('tra') ||
+    raw.includes('tea')
+  ) {
+    return { category: 'cafe', tag: 'quiet' };
+  }
+
+  // 4. If query includes "lẩu" or "nóng" or "tránh ngập"
+  if (
+    raw.includes('lẩu') ||
+    norm.includes('lau') ||
+    raw.includes('nóng') ||
+    norm.includes('nong') ||
+    raw.includes('tránh ngập') ||
+    norm.includes('tranh ngap') ||
+    raw.includes('hotpot')
+  ) {
+    return { category: 'hotpot', tag: 'dry_route' };
+  }
+
+  // 5. If query includes "chill" or "hẹn hò"
+  if (
+    raw.includes('chill') ||
+    raw.includes('hẹn hò') ||
+    norm.includes('hen ho') ||
+    raw.includes('view đẹp') ||
+    norm.includes('view dep')
+  ) {
+    return { category: 'cafe', tag: 'aesthetic' };
+  }
+
+  // 6. Nướng / BBQ
+  if (raw.includes('nướng') || norm.includes('nuong') || raw.includes('bbq')) {
+    return { category: 'bbq', tag: 'grilled_bbq' };
+  }
+
+  // 7. Bánh mì / Ăn nhanh
+  if (raw.includes('bánh mì') || norm.includes('banh mi') || raw.includes('burger') || raw.includes('fast food')) {
+    return { category: 'fast_food', tag: 'crispy_fast_food' };
+  }
+
+  // Default
+  return { category: 'all' };
+}
+
 // Popular culinary dishes and categories for quick filtering
 const POPULAR_DISHES = [
   { title: 'Phở Bò & Phở Gà', category: 'PHO', glyph: '🍜' },
@@ -386,40 +491,47 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [parsedIntent, setParsedIntent] = useState<SearchIntent | null>(null);
+  const [smartDecision, setSmartDecision] = useState<SmartDecisionState | null>(null);
+  const [isExecutingDecision, setIsExecutingDecision] = useState<boolean>(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [displayedResults, setDisplayedResults] = useState<SearchResultItem[]>([]);
   const recognitionRef = useRef<any>(null);
 
-  // Debounced AI Search Intent parsing for natural language queries
-  useEffect(() => {
-    const trimmed = searchQuery.trim();
-    if (!trimmed) {
-      setParsedIntent(null);
+  // Synchronous mock intent analysis for immediate instant UI update
+  const instantMockIntent = useMemo(() => mockAnalyzeIntent(searchQuery), [searchQuery]);
+
+  // Smart Typeahead Auto-complete Suggestions (for rich natural language queries)
+  const typeaheadSuggestions = useMemo(() => getSmartTypeaheadSuggestions(searchQuery), [searchQuery]);
+
+  // Execute real decision engine pipeline (Intent -> Filter -> Traffic Routing -> Gemini Reasoning)
+  const runDecisionEngine = async (queryText: string) => {
+    const trimmed = queryText.trim();
+    if (!trimmed || trimmed.length < 3) {
+      setSmartDecision(null);
       return;
     }
 
-    if (!isNaturalLanguageQuery(trimmed)) {
-      setParsedIntent(null);
+    // Only run smart decision engine if matched a smart intent scenario
+    const intent = mockAnalyzeIntent(trimmed);
+    if (intent.category === 'all') {
+      setSmartDecision(null);
       return;
     }
 
-    let isMounted = true;
-    const timer = setTimeout(async () => {
-      try {
-        const intent = await parseSearchIntentWithGemini(trimmed);
-        if (isMounted) {
-          setParsedIntent(intent);
-        }
-      } catch {
-        if (isMounted) {
-          setParsedIntent(null);
-        }
-      }
-    }, 200);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
-  }, [searchQuery]);
+    setIsExecutingDecision(true);
+    try {
+      const decision = await executeSmartSearch({
+        query: trimmed,
+        places: places as Place[],
+        userLocation: currentLocation,
+      });
+      setSmartDecision(decision);
+    } catch {
+      setSmartDecision(null);
+    } finally {
+      setIsExecutingDecision(false);
+    }
+  };
 
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
@@ -536,7 +648,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
   // Compute matched items for autocomplete
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
-  const searchResults = useMemo(() => {
+  const computedSearchResults = useMemo(() => {
     if (!normalizedQuery) {
       return [];
     }
@@ -591,7 +703,152 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
       lngKey: number;
     }> = [];
 
-    // 3a. AI Intent-Matched Venues (Smart Natural Language Intent Filtering)
+    // 3a. Instant Mock Intent Filter (0ms Latency - Emergency Demo Hack)
+    if (instantMockIntent.category !== 'all') {
+      const isCafe = instantMockIntent.category === 'cafe';
+      const isHotpot = instantMockIntent.category === 'hotpot';
+      const isNoodle = instantMockIntent.category === 'noodle';
+      const isBbq = instantMockIntent.category === 'bbq';
+      const isFastFood = instantMockIntent.category === 'fast_food';
+
+      const mockMatches = places.filter((p) => {
+        if (!p || typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return false;
+        const norm = normalizeCategory(p);
+        const name = (p.name || '').toLowerCase();
+        const catLabel = (p.categoryLabel || '').toLowerCase();
+
+        if (isNoodle) {
+          return (
+            norm === 'NOODLE' ||
+            norm === 'PHO' ||
+            catLabel.includes('mì') ||
+            catLabel.includes('bún') ||
+            catLabel.includes('phở') ||
+            catLabel.includes('noodle') ||
+            name.includes('mì') ||
+            name.includes('bún') ||
+            name.includes('phở') ||
+            name.includes('cay') ||
+            name.includes('ramen')
+          );
+        }
+
+        if (isCafe) {
+          return (
+            norm === 'CAFE_DRINK' ||
+            catLabel.includes('cà phê') ||
+            catLabel.includes('cafe') ||
+            catLabel.includes('trà') ||
+            catLabel.includes('coffee') ||
+            name.includes('cafe') ||
+            name.includes('cà phê') ||
+            name.includes('trà') ||
+            name.includes('coffee') ||
+            name.includes('blackbird') ||
+            name.includes('aha') ||
+            name.includes('highlands') ||
+            name.includes('all day')
+          );
+        }
+
+        if (isHotpot) {
+          return (
+            norm === 'HOTPOT' ||
+            catLabel.includes('lẩu') ||
+            catLabel.includes('hotpot') ||
+            name.includes('lẩu') ||
+            name.includes('hotpot') ||
+            name.includes('manwah') ||
+            name.includes('kichi') ||
+            name.includes('haidilao') ||
+            name.includes('555')
+          );
+        }
+
+        if (isBbq) {
+          return (
+            norm === 'BBQ' ||
+            catLabel.includes('nướng') ||
+            catLabel.includes('bbq') ||
+            name.includes('nướng') ||
+            name.includes('bbq')
+          );
+        }
+
+        if (isFastFood) {
+          return (
+            norm === 'FAST_FOOD' ||
+            catLabel.includes('bánh mì') ||
+            catLabel.includes('burger') ||
+            name.includes('bánh mì') ||
+            name.includes('burger')
+          );
+        }
+
+        return false;
+      });
+
+      for (const p of mockMatches) {
+        const classification = classifyVenue({
+          name: p.name,
+          category: p.category,
+          categoryLabel: p.categoryLabel,
+        });
+        const catMeta = CANONICAL_CATEGORIES[classification.category] || CANONICAL_CATEGORIES.RESTAURANT;
+
+        let distanceMeters: number | undefined;
+        if (currentLocation) {
+          distanceMeters = getDistance(currentLocation, { latitude: p.latitude, longitude: p.longitude });
+        }
+
+        let smartBadge = '';
+        if (instantMockIntent.tag === 'spicy_noodle') smartBadge = '🍜 Mì cay & Mì bún nóng hổi';
+        else if (instantMockIntent.tag === 'tasty_noodles') smartBadge = '🍜 Bún, Phở & Mì đặc sản';
+        else if (instantMockIntent.tag === 'quiet') smartBadge = '📚 Yên tĩnh • Phù hợp học & làm việc';
+        else if (instantMockIntent.tag === 'dry_route') smartBadge = '🍲 Lẩu nóng • Tuyến đường tránh ngập';
+        else if (instantMockIntent.tag === 'aesthetic') smartBadge = '✨ Không gian chill • Hẹn hò lý tưởng';
+        else if (instantMockIntent.tag === 'grilled_bbq') smartBadge = '🥩 Thịt nướng thơm lừng • BBQ hấp dẫn';
+        else if (instantMockIntent.tag === 'crispy_fast_food') smartBadge = '🥖 Bánh mì & Ăn nhanh tiện lợi';
+
+        const cleanAddressParts: string[] = [];
+        if (smartBadge) cleanAddressParts.push(smartBadge);
+        const rawAddr = (p.address || '').trim();
+        const rawDistrict = (p.district || '').trim();
+        if (rawAddr && rawAddr !== 'Hà Nội' && rawAddr !== 'Hà Nội, Hà Nội') {
+          const firstPart = rawAddr.split(',')[0].trim();
+          if (firstPart) cleanAddressParts.push(firstPart);
+        } else if (rawDistrict) {
+          cleanAddressParts.push(rawDistrict);
+        }
+
+        const subtitle = cleanAddressParts.join(' • ');
+        const normName = normalizeVietnameseText(p.name || '');
+        const latKey = Math.round(p.latitude * 2500);
+        const lngKey = Math.round(p.longitude * 2500);
+
+        venueCandidates.push({
+          item: {
+            id: `venue_${p.id}`,
+            type: 'venue',
+            title: p.name,
+            subtitle,
+            category: classification.category,
+            categoryGlyph: catMeta.symbolGlyph || '🍴',
+            latitude: p.latitude,
+            longitude: p.longitude,
+            venue: p,
+            distanceMeters,
+          },
+          score: 5000,
+          dist: distanceMeters ?? 999999,
+          normName,
+          latKey,
+          lngKey,
+        });
+      }
+    }
+
+    // 3b. AI Intent-Matched Venues (Smart Natural Language Intent Filtering)
     if (parsedIntent && (parsedIntent.category !== 'any' || parsedIntent.vibe !== 'any' || parsedIntent.maxDistanceKm < 50)) {
       const intentRanked = filterPlacesBySearchIntent(places, parsedIntent, currentLocation);
       for (const cand of intentRanked) {
@@ -734,7 +991,57 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
     results.push(...topVenues);
 
     return results;
-  }, [normalizedQuery, searchQuery, places, currentLocation, parsedIntent]);
+  }, [normalizedQuery, searchQuery, places, currentLocation, parsedIntent, instantMockIntent]);
+
+  // 800ms AI routing & thinking simulation when search query changes
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setIsSearching(false);
+      setDisplayedResults([]);
+      setParsedIntent(null);
+      setSmartDecision(null);
+      return;
+    }
+
+    setIsSearching(true);
+    setDisplayedResults([]);
+
+    let isMounted = true;
+    const timer = setTimeout(async () => {
+      if (!isMounted) return;
+
+      // 1. Set computed search results
+      setDisplayedResults(computedSearchResults);
+
+      // 2. Parse natural intent
+      if (isNaturalLanguageQuery(trimmed)) {
+        try {
+          const intent = await parseSearchIntentWithGemini(trimmed);
+          if (isMounted) {
+            setParsedIntent(intent);
+          }
+        } catch {
+          if (isMounted) {
+            setParsedIntent(null);
+          }
+        }
+      } else {
+        if (isMounted) setParsedIntent(null);
+      }
+
+      // 3. Trigger Real Decision Engine Pipeline if matched smart scenario
+      if (isMounted) {
+        runDecisionEngine(trimmed);
+        setIsSearching(false);
+      }
+    }, 800);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, computedSearchResults]);
 
   const handleSelectResult = (item: SearchResultItem) => {
     saveRecentSearch(item.title);
@@ -776,8 +1083,22 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
           type="text"
           value={searchQuery}
           onChange={(e) => {
-            onSearchQueryChange(e.target.value);
+            const val = e.target.value;
+            // Instant mock intent trigger
+            mockAnalyzeIntent(val);
+            onSearchQueryChange(val);
             if (!isOpen) setIsOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              const firstMatch = displayedResults.length > 0 ? displayedResults[0] : computedSearchResults[0];
+              if (firstMatch) {
+                handleSelectResult(firstMatch);
+              } else {
+                setIsOpen(false);
+              }
+            }
           }}
           onFocus={() => setIsOpen(true)}
           placeholder={isListening ? 'Đang lắng nghe giọng nói...' : 'Bạn muốn đi đâu? (VD: Phở, Cà phê...)'}
@@ -905,14 +1226,74 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
 
           {/* Scrollable Suggestion Body */}
           <div className="overflow-y-auto no-scrollbar py-2 divide-y divide-stone-100">
-            {/* Case A: Active Search Results */}
+            {/* Smart Typeahead Autocomplete Suggestions (Rich Contextual Prompts) */}
+            {typeaheadSuggestions.length > 0 && (
+              <div className="py-2 px-3 bg-amber-50/40 border-b border-amber-100/70">
+                <div className="flex items-center gap-1 text-[10.5px] font-heading font-bold text-amber-900 uppercase tracking-wider mb-1.5">
+                  <span>💡</span>
+                  <span>Gợi ý tìm kiếm theo ngữ cảnh</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {typeaheadSuggestions.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => {
+                        onSearchQueryChange(prompt);
+                        runDecisionEngine(prompt);
+                      }}
+                      className="text-left px-2.5 py-1.5 rounded-xl bg-white hover:bg-amber-100/60 border border-amber-200/80 text-[12px] font-heading font-medium text-stone-800 flex items-center gap-2 transition-all cursor-pointer group shadow-2xs"
+                    >
+                      <span className="text-amber-500 group-hover:translate-x-0.5 transition-transform text-xs">✨</span>
+                      <span className="truncate flex-1">{prompt}</span>
+                      <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-md font-bold shrink-0">
+                        Tìm ngay
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Case A: Active Search Results or Loading State */}
             {normalizedQuery ? (
-              searchResults.length > 0 ? (
-                <div className="py-1">
-                  <div className="px-3.5 py-1 text-[11px] font-heading font-bold text-stone-400 uppercase tracking-wider">
-                    Kết quả gợi ý ({searchResults.length})
+              isSearching ? (
+                <div className="py-8 px-4 flex flex-col items-center justify-center text-center animate-pulse" id="ai-search-loading-indicator">
+                  <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-200 flex items-center justify-center text-2xl shadow-sm mb-3">
+                    <span className="animate-spin text-xl">🧭</span>
                   </div>
-                  {searchResults.map((item) => (
+                  <p className="text-xs font-heading font-bold text-[#FF6B35]">
+                    BiteQuest đang phân tích lộ trình & thời tiết...
+                  </p>
+                  <p className="text-[11px] text-stone-400 mt-1">
+                    Đang tính toán tuyến đường khô ráo & giao thông thời gian thực
+                  </p>
+                </div>
+              ) : displayedResults.length > 0 ? (
+                <div className="py-1">
+                  {/* Real-time Explainable Decision Engine Result Card (ONLY render if smart scenario matched) */}
+                  {smartDecision && (
+                    <SmartDecisionCard
+                      decision={smartDecision}
+                      onSelectVenue={(venue) => {
+                        handleSelectResult({
+                          id: `venue_${venue.id}`,
+                          type: 'venue',
+                          title: venue.name,
+                          subtitle: venue.address || venue.district,
+                          latitude: venue.latitude,
+                          longitude: venue.longitude,
+                          venue,
+                        });
+                      }}
+                      isLoading={isExecutingDecision}
+                    />
+                  )}
+
+                  <div className="px-3.5 py-1 text-[11px] font-heading font-bold text-stone-400 uppercase tracking-wider">
+                    Kết quả gợi ý ({displayedResults.length})
+                  </div>
+                  {displayedResults.map((item) => (
                     <div
                       key={item.id}
                       className="w-full px-3.5 py-2 flex items-center justify-between hover:bg-stone-50 text-left transition-colors group"

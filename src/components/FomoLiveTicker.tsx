@@ -82,12 +82,12 @@ export const FomoLiveTicker: React.FC<FomoLiveTickerProps> = ({
     setEvents(dynamicEvents);
   }, [places]);
 
-  // Auto rotate ticker every 5 seconds unless hovered
+  // Auto rotate ticker every 5.5 seconds unless hovered
   useEffect(() => {
     if (events.length === 0 || isHovered || isDismissed) return;
     const interval = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % events.length);
-    }, 5000);
+    }, 5500);
     return () => clearInterval(interval);
   }, [events.length, isHovered, isDismissed]);
 
@@ -114,35 +114,50 @@ export const FomoLiveTicker: React.FC<FomoLiveTickerProps> = ({
       className={`pointer-events-auto transition-all duration-300 ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      id="live-activity-toast-pill"
     >
-      <div className="w-full bg-stone-900/60 hover:bg-stone-900/80 backdrop-blur-md text-stone-200 rounded-full py-0.5 px-2.5 border border-white/10 shadow-xs flex items-center justify-between gap-2 transition-all">
-        {/* Main Clickable Area */}
+      <div className="bg-white/96 hover:bg-white text-stone-800 backdrop-blur-md rounded-2xl py-1.5 px-3 border border-stone-200/90 shadow-[0_6px_22px_rgba(45,41,38,0.12)] flex items-center justify-between gap-2.5 transition-all animate-slide-up group max-w-sm">
+        {/* Main Clickable Content */}
         <button
           type="button"
           onClick={handleClick}
-          className="flex-1 flex items-center gap-1.5 min-w-0 text-left cursor-pointer group"
+          className="flex-1 flex items-center gap-2 min-w-0 text-left cursor-pointer"
         >
-          <span className="text-[11px] shrink-0 opacity-90">{currentEvent.icon}</span>
-
-          <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-            <span className="font-heading text-[11px] font-medium text-stone-200 truncate group-hover:text-amber-200 transition-colors">
-              {currentEvent.message}
+          {/* Animated Activity Dot & Icon */}
+          <div className="relative shrink-0 flex items-center justify-center w-6 h-6 rounded-xl bg-orange-50 text-[#FF6B35] text-xs">
+            <span>{currentEvent.icon}</span>
+            <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#FF6B35]"></span>
             </span>
-            <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-stone-800/80 text-stone-300 font-medium border border-white/10 shrink-0">
-              {currentEvent.badge}
+          </div>
+
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-heading text-xs font-bold text-stone-900 truncate group-hover:text-[#FF6B35] transition-colors">
+                {currentEvent.message}
+              </span>
+              <span className="text-[9px] font-heading font-extrabold px-1.5 py-0.2 rounded-md bg-orange-100 text-orange-800 border border-orange-200/60 shrink-0">
+                {currentEvent.badge}
+              </span>
+            </div>
+            <span className="text-[10px] text-stone-500 truncate">
+              {currentEvent.subtext}
             </span>
           </div>
         </button>
 
-        {/* Dismiss Ticker Button */}
+        {/* Dismiss Button */}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             setIsDismissed(true);
           }}
-          className="w-4 h-4 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center text-[8.5px] shrink-0 transition-colors cursor-pointer"
+          className="w-5 h-5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 flex items-center justify-center text-[10px] shrink-0 transition-colors cursor-pointer"
           title="Ẩn thông báo"
+          aria-label="Ẩn thông báo"
+          id="btn-dismiss-fomo-toast"
         >
           ✕
         </button>

@@ -199,6 +199,59 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackVa
   ]);
 }
 
+// Resilient Gemini AI caller with automatic fast fallback (e.g., 503 high demand or 429 rate limit)
+async function generateContentWithResilience(
+  ai: GoogleGenAI,
+  params: {
+    contents: any;
+    config?: any;
+    primaryModel?: string;
+    fallbackModel?: string;
+  },
+  timeoutMs = 6000
+): Promise<{ text: string; model: string } | null> {
+  const primaryModel = params.primaryModel || 'gemini-3.7-flash';
+  const fallbackModel = params.fallbackModel || 'gemini-3.1-flash-lite';
+
+  // 1. Attempt with primary model
+  try {
+    const callPromise = ai.models.generateContent({
+      model: primaryModel,
+      contents: params.contents,
+      config: params.config,
+    });
+    const res = await withTimeout(callPromise, timeoutMs, null);
+    if (res && res.text) {
+      return { text: res.text, model: primaryModel };
+    }
+  } catch (err: any) {
+    const errMsg = String(err?.message || err || '');
+    const isTransient = errMsg.includes('503') || errMsg.includes('429') || errMsg.includes('high demand') || errMsg.includes('UNAVAILABLE') || errMsg.includes('RESOURCE_EXHAUSTED');
+    if (isTransient) {
+      logger.info({ event: 'GEMINI_PRIMARY_MODEL_BUSY_FALLBACK', primaryModel, fallbackModel });
+    } else {
+      logger.info({ event: 'GEMINI_PRIMARY_MODEL_RETRY', error: errMsg.slice(0, 100) });
+    }
+  }
+
+  // 2. Fast fallback with lighter model to guarantee zero disruption
+  try {
+    const fallbackPromise = ai.models.generateContent({
+      model: fallbackModel,
+      contents: params.contents,
+      config: params.config,
+    });
+    const res = await withTimeout(fallbackPromise, timeoutMs, null);
+    if (res && res.text) {
+      return { text: res.text, model: fallbackModel };
+    }
+  } catch (err: any) {
+    logger.info({ event: 'GEMINI_FALLBACK_MODEL_FAILED', error: err?.message?.slice(0, 100) });
+  }
+
+  return null;
+}
+
 async function startServer() {
   // Wire Firestore database to Venue Registry and hydrate persisted venues
   try {
@@ -605,19 +658,20 @@ async function startServer() {
         try {
           const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-          // Execute Gemini AI with 10s strict timeout
-          const geminiCall = ai.models.generateContent({
-            model: 'gemini-3.7-flash',
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: 'image/jpeg',
-                    data: base64Data,
+          // Execute Gemini AI with resilient fallback and 8s timeout
+          const response = await generateContentWithResilience(
+            ai,
+            {
+              contents: {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: 'image/jpeg',
+                      data: base64Data,
+                    },
                   },
-                },
-                {
-                  text: `Bạn là trợ lý AI phân tích thị giác ẩm thực của BiteQuest.
+                  {
+                    text: `Bạn là trợ lý AI phân tích thị giác ẩm thực của BiteQuest.
 Nhiệm vụ: Trích xuất thông tin cấu trúc chính xác từ ảnh:
 1. isFoodOrDrink: boolean (CHỈ ĐẶT true nếu ảnh thực sự chứa đồ ăn, thức uống, món ăn, bánh kẹo hoặc menu quán ăn. Nếu là ảnh phong cảnh, người, đồ vật không liên quan đến ẩm thực -> false).
 2. dishName: Tên món ăn tiếng Việt ngắn gọn, chuẩn mực (ví dụ: "Bún Cá Chiên Giòn", "Phở Bò Tái Nạm", "Cà Phê Muối", "Bánh Mì Chảo").
@@ -628,34 +682,34 @@ Nhiệm vụ: Trích xuất thông tin cấu trúc chính xác từ ảnh:
 7. ambianceType: loại không gian (ví dụ: "Quán vỉa hè", "Quán trong ngõ", "Nhà hàng", "Quán cà phê").
 8. confidence: độ tin cậy từ 0.0 đến 1.0.
 9. tags: mảng 3-5 từ khóa mô tả món ăn.`,
-                },
-              ],
-            },
-            config: {
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  isFoodOrDrink: { type: Type.BOOLEAN },
-                  dishName: { type: Type.STRING },
-                  foodCategory: { type: Type.STRING },
-                  categoryLabel: { type: Type.STRING },
-                  visibleVenueText: { type: Type.STRING },
-                  visiblePriceMin: { type: Type.NUMBER },
-                  visiblePriceMax: { type: Type.NUMBER },
-                  ambianceType: { type: Type.STRING },
-                  confidence: { type: Type.NUMBER },
-                  tags: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
                   },
+                ],
+              },
+              config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                    isFoodOrDrink: { type: Type.BOOLEAN },
+                    dishName: { type: Type.STRING },
+                    foodCategory: { type: Type.STRING },
+                    categoryLabel: { type: Type.STRING },
+                    visibleVenueText: { type: Type.STRING },
+                    visiblePriceMin: { type: Type.NUMBER },
+                    visiblePriceMax: { type: Type.NUMBER },
+                    ambianceType: { type: Type.STRING },
+                    confidence: { type: Type.NUMBER },
+                    tags: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                  },
+                  required: ['isFoodOrDrink', 'dishName', 'foodCategory', 'confidence'],
                 },
-                required: ['isFoodOrDrink', 'dishName', 'foodCategory', 'confidence'],
               },
             },
-          });
-
-          const response = await withTimeout(geminiCall, 10000, null);
+            8000
+          );
 
           if (response && response.text) {
             const rawJson = JSON.parse(response.text.trim());
@@ -1475,35 +1529,36 @@ Categorization rules:
 
 Return strictly valid JSON matching this schema without markdown fences.`;
 
-        const geminiCall = ai.models.generateContent({
-          model: 'gemini-3.7-flash',
-          contents: [{ role: 'user', parts: [{ text: `Search query: "${query}"` }] }],
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                category: {
-                  type: Type.STRING,
-                  enum: ['cafe', 'food', 'fast_food', 'any'],
+        const response = await generateContentWithResilience(
+          ai,
+          {
+            contents: [{ role: 'user', parts: [{ text: `Search query: "${query}"` }] }],
+            config: {
+              systemInstruction: systemPrompt,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  category: {
+                    type: Type.STRING,
+                    enum: ['cafe', 'food', 'fast_food', 'any'],
+                  },
+                  maxDistanceKm: {
+                    type: Type.NUMBER,
+                  },
+                  vibe: {
+                    type: Type.STRING,
+                    enum: ['chill', 'noisy', 'romantic', 'any'],
+                  },
                 },
-                maxDistanceKm: {
-                  type: Type.NUMBER,
-                },
-                vibe: {
-                  type: Type.STRING,
-                  enum: ['chill', 'noisy', 'romantic', 'any'],
-                },
+                required: ['category', 'maxDistanceKm', 'vibe'],
               },
-              required: ['category', 'maxDistanceKm', 'vibe'],
+              temperature: 0.1,
+              maxOutputTokens: 250,
             },
-            temperature: 0.1,
-            maxOutputTokens: 250,
           },
-        });
-
-        const response = await withTimeout(geminiCall, 4000, null);
+          4000
+        );
 
         if (response && response.text) {
           const jsonText = response.text.trim();
@@ -1515,11 +1570,11 @@ Return strictly valid JSON matching this schema without markdown fences.`;
               maxDistanceKm: Number(parsedResult.maxDistanceKm) || 50,
               vibe: parsedResult.vibe || 'any',
             },
-            source: 'gemini-3.7-flash',
+            source: response.model,
           });
         }
       } catch (err: any) {
-        logger.warn({ event: 'GEMINI_SEARCH_INTENT_ERROR', error: err?.message });
+        logger.info({ event: 'GEMINI_SEARCH_INTENT_RULE_FALLBACK', reason: err?.message?.slice(0, 100) });
       }
     }
 
@@ -1619,30 +1674,31 @@ ${JSON.stringify(selectedOption, null, 2)}
 
 Provide the structured explanation in Vietnamese:`;
 
-        const geminiCall = ai.models.generateContent({
-          model: 'gemini-3.7-flash',
-          contents: [{ role: 'user', parts: [{ text: promptText }] }],
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                headline: { type: Type.STRING },
-                bulletPoints: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
+        const response = await generateContentWithResilience(
+          ai,
+          {
+            contents: [{ role: 'user', parts: [{ text: promptText }] }],
+            config: {
+              systemInstruction: systemPrompt,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  headline: { type: Type.STRING },
+                  bulletPoints: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  summary: { type: Type.STRING },
                 },
-                summary: { type: Type.STRING },
+                required: ['headline', 'bulletPoints', 'summary'],
               },
-              required: ['headline', 'bulletPoints', 'summary'],
+              temperature: 0.2,
+              maxOutputTokens: 350,
             },
-            temperature: 0.2,
-            maxOutputTokens: 350,
           },
-        });
-
-        const response = await withTimeout(geminiCall, 4000, null);
+          4000
+        );
 
         if (response && response.text) {
           const jsonText = response.text.trim();
@@ -1654,11 +1710,11 @@ Provide the structured explanation in Vietnamese:`;
               bulletPoints: parsedResult.bulletPoints || [],
               summary: parsedResult.summary,
             },
-            source: 'gemini-3.7-flash',
+            source: response.model,
           });
         }
       } catch (err: any) {
-        logger.warn({ event: 'GEMINI_DECISION_EXPLANATION_ERROR', error: err?.message });
+        logger.info({ event: 'GEMINI_DECISION_EXPLANATION_FALLBACK', error: err?.message?.slice(0, 100) });
       }
     }
 
@@ -1783,18 +1839,19 @@ QUY TẮC PHẢN HỒI:
           parts: [{ text: m.content }],
         }));
 
-        // Call Gemini 3.7 Flash with timeout
-        const geminiCall = ai.models.generateContent({
-          model: 'gemini-3.7-flash',
-          contents: geminiContents,
-          config: {
-            systemInstruction: systemPrompt,
-            temperature: 0.7,
-            maxOutputTokens: 1200,
+        // Call Gemini with automatic resilient fallback
+        const response = await generateContentWithResilience(
+          ai,
+          {
+            contents: geminiContents,
+            config: {
+              systemInstruction: systemPrompt,
+              temperature: 0.7,
+              maxOutputTokens: 1200,
+            },
           },
-        });
-
-        const response = await withTimeout(geminiCall, 12000, null);
+          10000
+        );
 
         if (response && response.text) {
           const rawText = response.text.trim();
@@ -1818,11 +1875,11 @@ QUY TẮC PHẢN HỒI:
             success: true,
             message: cleanedText,
             recommendedPlaceIds,
-            source: 'gemini-3.7-flash',
+            source: response.model,
           });
         }
       } catch (err: any) {
-        logger.warn({ event: 'GEMINI_CHAT_ERROR', error: err?.message });
+        logger.info({ event: 'GEMINI_CHAT_FALLBACK', error: err?.message?.slice(0, 100) });
       }
     }
 

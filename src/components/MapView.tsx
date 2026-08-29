@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import MapGL, { Marker, NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
+import MapGL, { Marker, Source, Layer, MapRef } from 'react-map-gl/maplibre';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -24,8 +24,10 @@ import {
 } from '../services/maps/mapProvider';
 import {
   normalizeCategory,
+  normalizeExploreFilterCategory,
   getCategoryMetadata,
   CANONICAL_CATEGORIES,
+  CanonicalCategory,
   ExploreFilterCategory,
   computeDynamicFilterChips,
   computeQuickFilterChips,
@@ -40,7 +42,7 @@ import { OpportunityCarousel } from './OpportunityCarousel';
 import { DiscoveryPeekSheet } from './DiscoveryPeekSheet';
 import { EMPTY_USER, EMPTY_PASSPORT_CAU_GIAY } from '../data/seedData';
 import { useExploreNearbyPlaces } from '../hooks/useExploreNearbyPlaces';
-import { GoogleMapsSearchBar } from './GoogleMapsSearchBar';
+import { GoogleMapsSearchBar, mockAnalyzeIntent } from './GoogleMapsSearchBar';
 import { CategoryFilterBar } from './CategoryFilterBar';
 import { buildGoogleMapsDirectionsUrl } from '../utils/navigationHelper';
 import {
@@ -55,6 +57,8 @@ import { MysteryDropModal } from './MysteryDropModal';
 import { BiteRouletteModal } from './BiteRouletteModal';
 import { TrafficSmartNavigatorSheet } from './TrafficSmartNavigatorSheet';
 import { SmartVenueComparatorModal } from './SmartVenueComparatorModal';
+import { HolidayEventModal } from './HolidayEventModal';
+import { BonfireEventButton } from './BonfireEventButton';
 import { TrafficRouteResult } from '../services/maps/trafficSmartRoutingService';
 import {
   getOrUpdateHotnessSnapshot,
@@ -300,27 +304,28 @@ const promotedPlacesIconLayer: any = {
   layout: {
     'icon-image': ['coalesce', ['get', 'iconName'], 'icon-other_food-unvisited'],
     'icon-size': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      11.5,
-      0.72,
-      13.5,
+      'case',
+      ['==', ['get', 'isMatched'], 0],
+      0,
+      ['==', ['get', 'isTopRecommended'], 1],
+      1.1,
+      ['==', ['get', 'isQuest'], 1],
+      0.95,
+      ['==', ['get', 'isHot'], 1],
       0.9,
-      15.5,
-      1.08,
-      17.5,
-      1.25,
+      0.8,
     ],
     'icon-allow-overlap': true,
     'icon-ignore-placement': true,
-    'icon-padding': 4,
+    'icon-padding': 6,
   },
   paint: {
     'icon-opacity': [
       'case',
+      ['==', ['get', 'isMatched'], 0],
+      0,
       ['==', ['get', 'isDimmed'], 1],
-      0.35,
+      0.25,
       0.95,
     ],
   },
@@ -330,47 +335,25 @@ const promotedPlacesLabelLayer: any = {
   id: 'promoted-places-labels',
   type: 'symbol',
   source: 'promoted-places-source',
-  minzoom: 13.5,
+  minzoom: 14.0,
   layout: {
     'text-field': ['get', 'name'],
     'text-font': ['Noto Sans Bold'],
-    'text-size': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      13.5,
-      10,
-      15.5,
-      11.5,
-      17.5,
-      13,
-    ],
-    'text-offset': [0, 1.35],
+    'text-size': 11,
+    'text-offset': [0, 1.25],
     'text-anchor': 'top',
-    'text-max-width': 9.5,
-    'text-padding': 3,
+    'text-max-width': 8.5,
+    'text-padding': 6,
     'text-optional': true,
     'text-allow-overlap': false,
     'text-ignore-placement': false,
   },
   paint: {
-    'text-color': [
-      'case',
-      ['==', ['get', 'isVisited'], 1],
-      '#065F46',
-      ['==', ['get', 'isHot'], 1],
-      '#C2410C',
-      '#1C1917',
-    ],
+    'text-color': '#2D2926',
     'text-halo-color': '#FFFFFF',
     'text-halo-width': 2.5,
     'text-halo-blur': 0.5,
-    'text-opacity': [
-      'case',
-      ['==', ['get', 'isDimmed'], 1],
-      0.4,
-      0.95,
-    ],
+    'text-opacity': 0.9,
   },
 };
 
@@ -418,6 +401,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [showTrafficSheet, setShowTrafficSheet] = useState(false);
   const [selectedTrafficRoute, setSelectedTrafficRoute] = useState<TrafficRouteResult | null>(null);
   const [showComparatorModal, setShowComparatorModal] = useState(false);
+  const [showHolidayEventModal, setShowHolidayEventModal] = useState(false);
   const [comparatorInitialVenues, setComparatorInitialVenues] = useState<(Place | UnifiedPlace)[]>([]);
   const [currentZoom, setCurrentZoom] = useState<number>(14.5);
   const mapRef = useRef<MapRef | null>(null);
@@ -450,13 +434,36 @@ export const MapView: React.FC<MapViewProps> = ({
     setShowLayerSwitcher(false);
   };
 
-  // Real browser geolocation state
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [hasRealLocation, setHasRealLocation] = useState(false);
-  const [, setIsLocating] = useState(false);
+  // Real browser geolocation state (initialized from persistent cache if available)
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(() => {
+    try {
+      const cached = localStorage.getItem('bitequest_last_user_location');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (typeof parsed?.latitude === 'number' && typeof parsed?.longitude === 'number') {
+          return { latitude: parsed.latitude, longitude: parsed.longitude };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  const [hasRealLocation, setHasRealLocation] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem('bitequest_last_user_location'));
+    } catch {
+      return false;
+    }
+  });
+  const [isLocating, setIsLocating] = useState(false);
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [geoStatusMessage, setGeoStatusMessage] = useState<string | null>(null);
 
   // One-shot initialization and warning throttling refs
   const initialGeolocatedRef = useRef(false);
+  const hasFlownToInitialLocationRef = useRef(false);
   const hasLoggedGeoWarningRef = useRef(false);
 
   // Live Geoapify background POIs state via dedicated hook
@@ -474,7 +481,20 @@ export const MapView: React.FC<MapViewProps> = ({
     addDiscoveredPOIs,
   } = useExploreNearbyPlaces();
   const [selectedBackgroundPOI, setSelectedBackgroundPOI] = useState<UnifiedPlace | null>(null);
-  const [viewportCenter, setViewportCenter] = useState<{ latitude: number; longitude: number }>(FALLBACK_CENTER);
+  const [viewportCenter, setViewportCenter] = useState<{ latitude: number; longitude: number }>(() => {
+    try {
+      const cached = localStorage.getItem('bitequest_last_user_location');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (typeof parsed?.latitude === 'number' && typeof parsed?.longitude === 'number') {
+          return { latitude: parsed.latitude, longitude: parsed.longitude };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return FALLBACK_CENTER;
+  });
   const [viewportRadius, setViewportRadius] = useState<number>(2500);
   const [isPioneerBannerDismissed, setIsPioneerBannerDismissed] = useState<boolean>(false);
   const [isAreaSearching, setIsAreaSearching] = useState<boolean>(false);
@@ -515,64 +535,154 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [mapMode]);
 
-  // Request real browser geolocation on initial mount & trigger automatic ripple expansion
+  // Guaranteed camera fly-to when map is ready and user location is available
+  useEffect(() => {
+    if (!isMapLoaded || !userLocation) return;
+    if (!hasFlownToInitialLocationRef.current) {
+      hasFlownToInitialLocationRef.current = true;
+      const map = mapRef.current?.getMap();
+      if (map) {
+        map.flyTo({
+          center: [userLocation.longitude, userLocation.latitude],
+          zoom: 15.8,
+          duration: 1200,
+          essential: true,
+        });
+      }
+    }
+  }, [isMapLoaded, userLocation]);
+
+  // Request real browser geolocation on initial mount & pin map frame directly to user coordinates
   useEffect(() => {
     if (initialGeolocatedRef.current) return;
     initialGeolocatedRef.current = true;
 
-    // Immediately trigger ripple expansion starting from default center:
-    // First immediate perimeter (2.5km), then auto-radiating outwards to 6km, 12km, 20km
-    triggerRippleExpansion(FALLBACK_CENTER, {
-      anchor: { latitude: FALLBACK_CENTER.latitude, longitude: FALLBACK_CENTER.longitude, isRealUserLocation: false },
+    const initialAnchor = userLocation || FALLBACK_CENTER;
+    triggerRippleExpansion(initialAnchor, {
+      anchor: { latitude: initialAnchor.latitude, longitude: initialAnchor.longitude, isRealUserLocation: Boolean(userLocation) },
     });
 
     let isMounted = true;
+    let watchId: number | null = null;
+
+    // 1. First trigger IP-based approximate location in parallel for instant regional targeting
+    fetch('https://get.geojs.io/v1/ip/geo.json')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!isMounted) return;
+        const lat = parseFloat(data.latitude);
+        const lng = parseFloat(data.longitude);
+        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+          setUserLocation((prev) => {
+            if (prev) return prev; // Do not override if high-precision GPS already arrived
+            const ipCoords = { latitude: lat, longitude: lng };
+            try {
+              localStorage.setItem('bitequest_last_user_location', JSON.stringify(ipCoords));
+            } catch {}
+            setHasRealLocation(true);
+            setViewportCenter(ipCoords);
+            triggerRippleExpansion(ipCoords, {
+              anchor: { latitude: ipCoords.latitude, longitude: ipCoords.longitude, isRealUserLocation: true },
+            });
+            const map = mapRef.current?.getMap();
+            if (map && !hasFlownToInitialLocationRef.current) {
+              hasFlownToInitialLocationRef.current = true;
+              map.flyTo({
+                center: [ipCoords.longitude, ipCoords.latitude],
+                zoom: 15.5,
+                duration: 1000,
+                essential: true,
+              });
+            }
+            return ipCoords;
+          });
+        }
+      })
+      .catch(() => {
+        // IP lookup fallback silent catch
+      });
+
+    // 2. High-precision browser GPS
     if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
       setIsLocating(true);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          if (!isMounted) return;
-          const coords = {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          };
-          setUserLocation(coords);
-          setHasRealLocation(true);
-          setIsLocating(false);
-          setViewportCenter(coords);
-          
-          // Trigger automatic ripple outward expansion from real user coordinates
-          triggerRippleExpansion(coords, {
-            anchor: { latitude: coords.latitude, longitude: coords.longitude, isRealUserLocation: true },
-          });
+      
+      const handlePositionSuccess = (pos: GeolocationPosition) => {
+        if (!isMounted) return;
+        const coords = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        };
+        setUserLocation(coords);
+        setHasRealLocation(true);
+        setIsLocating(false);
+        setViewportCenter(coords);
+        setGeoStatusMessage('Đã ghim vị trí GPS chính xác của bạn');
+        setTimeout(() => setGeoStatusMessage(null), 3000);
 
-          mapRef.current?.flyTo({
+        try {
+          localStorage.setItem('bitequest_last_user_location', JSON.stringify(coords));
+        } catch {
+          // ignore
+        }
+
+        // Trigger automatic ripple outward expansion from real user coordinates
+        triggerRippleExpansion(coords, {
+          anchor: { latitude: coords.latitude, longitude: coords.longitude, isRealUserLocation: true },
+        });
+
+        // Pin the map viewport directly to user coordinates
+        const map = mapRef.current?.getMap();
+        if (map) {
+          hasFlownToInitialLocationRef.current = true;
+          map.flyTo({
             center: [coords.longitude, coords.latitude],
-            zoom: 15,
-            duration: 800,
+            zoom: 15.8,
+            duration: 1200,
+            essential: true,
           });
-        },
+        }
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        handlePositionSuccess,
         (err) => {
           if (!isMounted) return;
           if (!hasLoggedGeoWarningRef.current) {
             hasLoggedGeoWarningRef.current = true;
-            console.warn('[Explore] Geolocation not granted, maintaining Cầu Giấy center:', err.message);
+            console.warn('[Explore] Geolocation permission prompt / error:', err.message);
           }
-          setHasRealLocation(false);
-          setUserLocation(null);
           setIsLocating(false);
         },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
-    } else {
-      setHasRealLocation(false);
-      setUserLocation(null);
+
+      // Continuous watcher to keep user position pin accurate
+      try {
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            if (!isMounted) return;
+            const coords = {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+            };
+            setUserLocation(coords);
+            setHasRealLocation(true);
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+        );
+      } catch {
+        // ignore
+      }
     }
 
     return () => {
       isMounted = false;
+      if (watchId !== null && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(watchId);
+      }
     };
-  }, [triggerRippleExpansion]);
+  }, [triggerRippleExpansion, userLocation]);
 
   // Handle external focus target (e.g. from Traffic Notification center)
   useEffect(() => {
@@ -809,13 +919,14 @@ export const MapView: React.FC<MapViewProps> = ({
   }, [allLoadedVenues, activeCategoryFilter]);
 
   const handleSelectCategoryFilter = useCallback(
-    (filter: ExploreFilterCategory) => {
-      setActiveCategoryFilter(filter);
-      if (filter !== 'ALL') {
-        if (selectedPlace && normalizeCategory(selectedPlace) !== filter) {
+    (filter: ExploreFilterCategory | string | null | undefined) => {
+      const canonicalFilter = normalizeExploreFilterCategory(filter);
+      setActiveCategoryFilter(canonicalFilter);
+      if (canonicalFilter !== 'ALL') {
+        if (selectedPlace && normalizeCategory(selectedPlace) !== canonicalFilter) {
           onSelectPlace(null);
         }
-        if (selectedBackgroundPOI && normalizeCategory(selectedBackgroundPOI) !== filter) {
+        if (selectedBackgroundPOI && normalizeCategory(selectedBackgroundPOI) !== canonicalFilter) {
           setSelectedBackgroundPOI(null);
         }
       }
@@ -825,15 +936,28 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // Client-side filtering for ambient POIs (Zero network fetch)
   const filteredUnpromotedNearbyPOIs = useMemo(() => {
+    if (!Array.isArray(unpromotedNearbyPOIs) || unpromotedNearbyPOIs.length === 0) {
+      return [];
+    }
     return unpromotedNearbyPOIs.filter((poi) => {
+      if (!poi || typeof poi.latitude !== 'number' || typeof poi.longitude !== 'number') {
+        return false;
+      }
       // 1. Category Filter
       if (activeCategoryFilter !== 'ALL') {
         const cat = normalizeCategory(poi);
         if (cat !== activeCategoryFilter) return false;
       }
-      // 2. Search Query (Accent-tolerant & keyword matching)
+      // 2. Search Query (Instant Mock Intent Matching + Keyword matching)
       if (searchQuery.trim()) {
-        if (!matchVenueSearch(poi, searchQuery)) return false;
+        const mockIntent = mockAnalyzeIntent(searchQuery);
+        if (mockIntent.category !== 'all') {
+          const cat = normalizeCategory(poi);
+          if (mockIntent.category === 'cafe' && cat !== 'CAFE_DRINK') return false;
+          if (mockIntent.category === 'hotpot' && cat !== 'HOTPOT') return false;
+        } else if (!matchVenueSearch(poi, searchQuery)) {
+          return false;
+        }
       }
       return true;
     });
@@ -841,9 +965,21 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // GeoJSON FeatureCollection for background clustered POI layer
   const backgroundPOIGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point> = useMemo(() => {
+    if (!Array.isArray(filteredUnpromotedNearbyPOIs) || filteredUnpromotedNearbyPOIs.length === 0) {
+      return {
+        type: 'FeatureCollection',
+        features: [],
+      };
+    }
+    // Hard slice to maximum 40 items for instant 60fps rendering
+    const validPOIs = filteredUnpromotedNearbyPOIs.filter(
+      (poi) => poi && typeof poi.latitude === 'number' && typeof poi.longitude === 'number'
+    );
+    const dataToRender = validPOIs.slice(0, 40);
+
     return {
       type: 'FeatureCollection',
-      features: filteredUnpromotedNearbyPOIs.map((poi) => {
+      features: dataToRender.map((poi) => {
         const canonicalCat = normalizeCategory({
           name: poi.name,
           category: poi.category,
@@ -900,7 +1036,13 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // Filter promoted places in active area (Zero network fetch)
   const filteredPlaces = useMemo(() => {
+    if (!Array.isArray(localPromotedPlaces) || localPromotedPlaces.length === 0) {
+      return [];
+    }
     return localPromotedPlaces.filter((place) => {
+      if (!place || typeof place.latitude !== 'number' || typeof place.longitude !== 'number') {
+        return false;
+      }
       // 1. Category Filter
       if (activeCategoryFilter !== 'ALL') {
         const cat = normalizeCategory(place);
@@ -921,69 +1063,91 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // Curated Promoted BiteQuest Places GeoJSON FeatureCollection (GPU WebGL hardware-accelerated)
   const promotedPlacesGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point> = useMemo(() => {
+    if (!Array.isArray(filteredPlaces) || filteredPlaces.length === 0) {
+      return {
+        type: 'FeatureCollection',
+        features: [],
+      };
+    }
     const topRecommendationId = todayOpportunities.length > 0 ? todayOpportunities[0].venueId : null;
+    const isFilterOrSearchActive = activeCategoryFilter !== 'ALL' || Boolean(searchQuery.trim());
+
+    // EMERGENCY DEMO-DAY HACK: Limit rendered places to top 30 items maximum to ensure instant 60fps
+    const dataToRender = filteredPlaces
+      .filter((place) => place && place.id !== activeSelectedPlace?.id)
+      .slice(0, 30);
 
     return {
       type: 'FeatureCollection',
-      features: filteredPlaces
-        // Exclude currently active selected place so it doesn't duplicate beneath the high-fidelity selected HTML Marker
-        .filter((place) => place.id !== activeSelectedPlace?.id)
-        .map((place) => {
-          const canonicalCat = normalizeCategory(place);
-          const meta = getCategoryMetadata(canonicalCat);
-          const isVisited =
-            visitedPlaceIds.has(place.id) ||
-            Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
-            Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
+      features: dataToRender.map((place) => {
+        const canonicalCat = normalizeCategory(place);
+        const meta = getCategoryMetadata(canonicalCat);
+        const isVisited =
+          visitedPlaceIds.has(place.id) ||
+          Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
+          Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
 
-          const vId = place.id || (place as any).providerPlaceId || place.name;
-          const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(place, hotnessSnapshot.calculatedAt);
-          const isHot = !isVisited && hotness.isHot;
+        const vId = place.id || (place as any).providerPlaceId || place.name;
+        const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(place, hotnessSnapshot.calculatedAt);
+        const isHot = !isVisited && hotness.isHot;
 
-          const opp = opportunityMap.get(place.id);
-          const isScout = opp?.type === 'SCOUT_WINDOW';
-          const isQuest = opp?.type === 'QUEST_MATCH';
-          const isFriendEcho = opp?.type === 'FRIEND_ECHO' && Boolean(opp.friendActivity);
-          const isFriendActive = isFriendEcho || (place.friendsVisited && place.friendsVisited.length > 0);
-          const isQuestActive = isQuest || isScout;
+        const opp = opportunityMap.get(place.id);
+        const isScout = opp?.type === 'SCOUT_WINDOW';
+        const isQuest = opp?.type === 'QUEST_MATCH';
+        const isFriendEcho = opp?.type === 'FRIEND_ECHO' && Boolean(opp.friendActivity);
+        const isFriendActive = isFriendEcho || (place.friendsVisited && place.friendsVisited.length > 0);
+        const isQuestActive = isQuest || isScout;
 
-          const isDimmedInMode =
-            (exploreMode === 'friends' && !isFriendActive) ||
-            (exploreMode === 'quest' && !isQuestActive);
+        const isDimmedInMode =
+          (exploreMode === 'friends' && !isFriendActive) ||
+          (exploreMode === 'quest' && !isQuestActive);
 
-          const isTopRecommended = topRecommendationId === place.id;
+        const isTopRecommended = topRecommendationId === place.id;
 
-          const iconName = isVisited
-            ? `icon-${canonicalCat.toLowerCase()}-visited`
-            : isHot
-            ? `icon-${canonicalCat.toLowerCase()}-hot`
-            : `icon-${canonicalCat.toLowerCase()}-unvisited`;
+        // Compute search / category match status for Google Maps style spotlighting
+        let isMatched = 1;
+        if (isFilterOrSearchActive) {
+          const matchesCategory =
+            activeCategoryFilter === 'ALL' || canonicalCat === activeCategoryFilter;
+          const matchesSearch =
+            !searchQuery.trim() || matchVenueSearch(place, searchQuery);
+          isMatched = matchesCategory && matchesSearch ? 1 : 0;
+        }
 
-          return {
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: [place.longitude, place.latitude],
-            },
-            properties: {
-              id: place.id,
-              name: place.name,
-              category: place.category,
-              canonicalCategory: canonicalCat,
-              categoryLabel: meta.label,
-              iconName,
-              isVisited: isVisited ? 1 : 0,
-              isHot: isHot ? 1 : 0,
-              isScout: isScout ? 1 : 0,
-              isQuest: isQuest ? 1 : 0,
-              isTopRecommended: isTopRecommended ? 1 : 0,
-              isDimmed: isDimmedInMode ? 1 : 0,
-            },
-          };
-        }),
+        const iconName = isVisited
+          ? `icon-${canonicalCat.toLowerCase()}-visited`
+          : isHot
+          ? `icon-${canonicalCat.toLowerCase()}-hot`
+          : `icon-${canonicalCat.toLowerCase()}-unvisited`;
+
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [place.longitude, place.latitude],
+          },
+          properties: {
+            id: place.id,
+            name: place.name,
+            category: place.category,
+            canonicalCategory: canonicalCat,
+            categoryLabel: meta.label,
+            iconName,
+            isVisited: isVisited ? 1 : 0,
+            isHot: isHot ? 1 : 0,
+            isScout: isScout ? 1 : 0,
+            isQuest: isQuest ? 1 : 0,
+            isTopRecommended: isTopRecommended ? 1 : 0,
+            isDimmed: isDimmedInMode ? 1 : 0,
+            isMatched,
+          },
+        };
+      }),
     };
   }, [
     filteredPlaces,
+    activeCategoryFilter,
+    searchQuery,
     activeSelectedPlace?.id,
     visitedPlaceIds,
     hotnessSnapshot,
@@ -997,13 +1161,21 @@ export const MapView: React.FC<MapViewProps> = ({
     if (activeCategoryFilter === 'ALL' && !searchQuery.trim()) {
       return radarOpportunities;
     }
+    const mockIntent = mockAnalyzeIntent(searchQuery);
+
     return radarOpportunities.filter((opp) => {
       if (activeCategoryFilter !== 'ALL') {
         const cat = normalizeCategory(opp.place);
         if (cat !== activeCategoryFilter) return false;
       }
-      if (searchQuery.trim() && !matchVenueSearch(opp.place, searchQuery)) {
-        return false;
+      if (searchQuery.trim()) {
+        if (mockIntent.category !== 'all') {
+          const cat = normalizeCategory(opp.place);
+          if (mockIntent.category === 'cafe' && cat !== 'CAFE_DRINK') return false;
+          if (mockIntent.category === 'hotpot' && cat !== 'HOTPOT') return false;
+        } else if (!matchVenueSearch(opp.place, searchQuery)) {
+          return false;
+        }
       }
       return true;
     });
@@ -1278,30 +1450,10 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // Re-center button click: pans to user GPS if available, else re-prompts geolocation
   const handleMyLocationClick = () => {
-    if (userLocation && hasRealLocation) {
-      handleFlyTo(userLocation.latitude, userLocation.longitude, 16.2);
-      triggerRippleExpansion(userLocation, {
-        anchor: {
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
-          isRealUserLocation: true,
-        },
-      });
+    setIsLocating(true);
+    setGeoStatusMessage('Đang kết nối GPS chính xác của bạn...');
 
-      // Background GPS refinement
-      if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-            setUserLocation(coords);
-            setHasRealLocation(true);
-          },
-          () => {},
-          { enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
-        );
-      }
-    } else if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
-      setIsLocating(true);
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
@@ -1309,6 +1461,15 @@ export const MapView: React.FC<MapViewProps> = ({
           setHasRealLocation(true);
           setIsLocating(false);
           setViewportCenter(coords);
+          setGeoStatusMessage('Đã ghim vị trí GPS của bạn');
+          setTimeout(() => setGeoStatusMessage(null), 3000);
+
+          try {
+            localStorage.setItem('bitequest_last_user_location', JSON.stringify(coords));
+          } catch {
+            // ignore
+          }
+
           handleFlyTo(coords.latitude, coords.longitude, 16.2);
           triggerRippleExpansion(coords, {
             anchor: {
@@ -1319,14 +1480,25 @@ export const MapView: React.FC<MapViewProps> = ({
           });
         },
         (err) => {
-          console.warn('Geolocation unavailable:', err);
+          console.warn('Geolocation error / unavailable:', err);
           setIsLocating(false);
-          handleFlyTo(FALLBACK_CENTER.latitude, FALLBACK_CENTER.longitude, 15.5);
+          setGeoStatusMessage('Dùng định vị khu vực hiện tại');
+          setTimeout(() => setGeoStatusMessage(null), 3000);
+          if (userLocation) {
+            handleFlyTo(userLocation.latitude, userLocation.longitude, 15.8);
+          } else {
+            handleFlyTo(FALLBACK_CENTER.latitude, FALLBACK_CENTER.longitude, 15.5);
+          }
         },
-        { enableHighAccuracy: true, timeout: 8000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      handleFlyTo(FALLBACK_CENTER.latitude, FALLBACK_CENTER.longitude, 15.5);
+      setIsLocating(false);
+      if (userLocation) {
+        handleFlyTo(userLocation.latitude, userLocation.longitude, 15.8);
+      } else {
+        handleFlyTo(FALLBACK_CENTER.latitude, FALLBACK_CENTER.longitude, 15.5);
+      }
     }
   };
 
@@ -1345,20 +1517,15 @@ export const MapView: React.FC<MapViewProps> = ({
           ref={mapRef}
           mapLib={maplibregl}
           initialViewState={{
-            longitude: mapConfig.defaultCenter[0],
-            latitude: mapConfig.defaultCenter[1],
-            zoom: mapConfig.defaultZoom,
+            longitude: userLocation?.longitude || mapConfig.defaultCenter[0],
+            latitude: userLocation?.latitude || mapConfig.defaultCenter[1],
+            zoom: userLocation ? 15.5 : mapConfig.defaultZoom,
           }}
           mapStyle={activeMapStyle}
           style={{ width: '100%', height: '100%' }}
           attributionControl={false}
           interactiveLayerIds={['clusters', 'promoted-places-icons', 'promoted-places-labels', 'unclustered-category-icon', 'ambient-venue-labels']}
           onClick={handleMapClick}
-          onMove={(e) => {
-            if (e.viewState?.zoom) {
-              setCurrentZoom(e.viewState.zoom);
-            }
-          }}
           onMoveEnd={handleMapMoveEnd}
           onError={(event: any) => {
             const errorObj = event?.error || {};
@@ -1369,7 +1536,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   (typeof event?.message === 'string' ? event.message : '') ||
                   (typeof event?.status === 'number' ? `HTTP ${event.status}` : 'MapLibre event');
             
-            console.warn('[MapLibre Event / Error]', errorMsg, event);
+            console.warn('[MapLibre Event / Error]', errorMsg);
 
             // Log actual error and fallback to Carto Voyager ONLY if OpenFreeMap style itself genuinely fails to load
             if (
@@ -1384,10 +1551,17 @@ export const MapView: React.FC<MapViewProps> = ({
             }
           }}
           onLoad={(e) => {
+            setIsMapLoaded(true);
             setMapLoadError(false);
             const map = e.target;
             setupMapIconLifecycle(map);
             map.resize();
+            if (userLocation) {
+              map.jumpTo({
+                center: [userLocation.longitude, userLocation.latitude],
+                zoom: 15.8,
+              });
+            }
             try {
               const vectorVenues = scanRenderedMapPlaces(map, referenceLocation);
               if (vectorVenues.length > 0) {
@@ -1411,11 +1585,6 @@ export const MapView: React.FC<MapViewProps> = ({
             }
           }}
         >
-          {/* Top-right Navigation Controls positioned safely below top bar */}
-          <div className="absolute top-32 right-3 z-20 pointer-events-auto">
-            <NavigationControl position="top-right" showCompass={false} />
-          </div>
-
           {/* Background POI GeoJSON Layer - Subtle clustering at far zoom, Category symbols at mid/close zoom */}
           <Source
             id="background-pois"
@@ -1654,33 +1823,6 @@ export const MapView: React.FC<MapViewProps> = ({
           onOpenRoulette={() => setShowRoulette(true)}
           isLoading={isLoadingPOIs}
         />
-
-        {/* Interactive Food Intent Category Navigation Bar with Drag-to-Scroll & Pinned Filter Button */}
-        <CategoryFilterBar
-          chips={quickFilterChips}
-          activeFilter={activeCategoryFilter}
-          onSelectFilter={handleSelectCategoryFilter}
-          onOpenFullFilter={() => setShowFullFilterSheet(true)}
-          totalVenuesCount={allLoadedVenues.length}
-        />
-
-        {/* Dynamic FOMO Live Activity & Flash Drop Ticker */}
-        <FomoLiveTicker
-          places={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
-          onSelectPlaceByCoords={(lat, lng, placeId) => {
-            handleFlyTo(lat, lng, 16.5);
-            if (placeId) {
-              const match =
-                places.find((p) => p.id === placeId) ||
-                allLoadedVenues.find((v: any) => v.id === placeId);
-              if (match) {
-                onSelectPlace(match as Place);
-              }
-            }
-          }}
-          onOpenMysteryDrop={() => setShowMysteryDrop(true)}
-          className="w-full"
-        />
       </div>
 
       {/* 3B. Floating "Khám phá quanh đây" Signature Scan Pill when user pans away */}
@@ -1722,8 +1864,8 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* 4. Empty Search/Filter State Banner */}
-      {totalVisibleVenues === 0 && isFilterActive && (
+      {/* 4. Empty Search/Filter State Banner (ONLY show when quick category filter is active, NEVER while user is typing in search bar) */}
+      {totalVisibleVenues === 0 && activeCategoryFilter !== 'ALL' && !searchQuery.trim() && (
         <div
           className="absolute top-[calc(13rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-[#FDFCF8]/95 backdrop-blur-md px-5 py-4 rounded-2xl shadow-[0_8px_30px_rgba(45,41,38,0.12)] border border-[#2D2926]/10 flex flex-col items-center gap-2.5 max-w-[340px] text-center animate-fade-in"
           id="empty-filter-state-banner"
@@ -1732,22 +1874,14 @@ export const MapView: React.FC<MapViewProps> = ({
           <span className="text-2xl">🍽️</span>
           <p className="text-xs text-[#594139] font-medium leading-relaxed">
             Không có địa điểm phù hợp trong khu vực này.
-            {activeCategoryFilter !== 'ALL' && (
-              <span className="block mt-1 text-[11px] text-[#8D7168]">
-                Đang chọn: <strong>{CANONICAL_CATEGORIES[activeCategoryFilter]?.label || activeCategoryFilter}</strong>
-              </span>
-            )}
-            {searchQuery.trim() && (
-              <span className="block text-[11px] text-[#8D7168]">
-                Từ khóa: <strong>"{searchQuery}"</strong>
-              </span>
-            )}
+            <span className="block mt-1 text-[11px] text-[#8D7168]">
+              Đang chọn: <strong>{CANONICAL_CATEGORIES[activeCategoryFilter]?.label || activeCategoryFilter}</strong>
+            </span>
           </p>
           <button
             type="button"
             onClick={() => {
               handleSelectCategoryFilter('ALL');
-              setSearchQuery('');
             }}
             className="px-4 py-2 bg-[#FF6B35] hover:bg-[#E85D2A] text-white text-xs font-heading font-bold rounded-full shadow-sm active:scale-95 transition-all cursor-pointer"
             id="btn-clear-empty-filter"
@@ -1920,6 +2054,9 @@ export const MapView: React.FC<MapViewProps> = ({
 
       {/* 5. Floating Map Controls (Quiet & Distinctive Floating Dock) */}
       <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex flex-col gap-2.5 z-20 pointer-events-auto items-end">
+        {/* 🔥 Contextual Hot Event Bonfire (Đống Lửa Lễ 2/9) */}
+        <BonfireEventButton onClick={() => setShowHolidayEventModal(true)} />
+
         {/* Signature Interaction: 🎲 Hôm nay ăn gì? (Tactile, Delightful Trigger) */}
         <button
           type="button"
@@ -2082,22 +2219,52 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         </div>
 
-        {/* Re-Center GPS Button */}
-        <button
-          onClick={handleMyLocationClick}
-          className="w-10 h-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_4px_16px_rgba(45,41,38,0.12)] flex items-center justify-center text-stone-800 hover:bg-stone-50 border border-stone-200/90 active:scale-95 transition-all cursor-pointer"
-          title={hasRealLocation ? 'Vị trí của bạn' : 'Định vị GPS'}
-          id="btn-my-location"
-          aria-label="Định vị GPS"
-        >
-          <span
-            className={`material-symbols-outlined text-[19px] ${
-              hasRealLocation ? 'text-[#FF6B35]' : 'text-stone-500'
-            }`}
+        {/* Zoom Controls & Re-Center GPS Cluster */}
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_4px_16px_rgba(45,41,38,0.12)] border border-stone-200/90 p-1 flex flex-col items-center gap-1">
+          {/* Zoom In */}
+          <button
+            type="button"
+            onClick={() => mapRef.current?.zoomIn()}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-stone-700 hover:bg-stone-100 hover:text-stone-950 font-bold active:scale-95 transition-all cursor-pointer select-none text-base"
+            title="Phóng to bản đồ"
+            aria-label="Phóng to"
           >
-            my_location
-          </span>
-        </button>
+            +
+          </button>
+          
+          <div className="w-5 h-[1px] bg-stone-200/80" />
+
+          {/* Zoom Out */}
+          <button
+            type="button"
+            onClick={() => mapRef.current?.zoomOut()}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-stone-700 hover:bg-stone-100 hover:text-stone-950 font-bold active:scale-95 transition-all cursor-pointer select-none text-base"
+            title="Thu nhỏ bản đồ"
+            aria-label="Thu nhỏ"
+          >
+            −
+          </button>
+
+          <div className="w-5 h-[1px] bg-stone-200/80" />
+
+          {/* Re-Center GPS Button */}
+          <button
+            type="button"
+            onClick={handleMyLocationClick}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-stone-800 hover:bg-stone-100 active:scale-95 transition-all cursor-pointer"
+            title={hasRealLocation ? 'Vị trí của bạn' : 'Định vị GPS'}
+            id="btn-my-location"
+            aria-label="Định vị GPS"
+          >
+            <span
+              className={`material-symbols-outlined text-[19px] ${
+                hasRealLocation ? 'text-[#FF6B35]' : 'text-stone-500'
+              }`}
+            >
+              my_location
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Fog of War Interactive HUD Overlay */}
@@ -2111,15 +2278,28 @@ export const MapView: React.FC<MapViewProps> = ({
         />
       )}
 
-      {/* 6a. Discovery Peek Sheet (Compact Today Corner Widget on Explore) */}
-      {!activePlace && !selectedBackgroundPOI && !isRadarOpen && (
-        <DiscoveryPeekSheet
-          todayOpportunities={todayOpportunities}
-          totalVenuesCount={allLoadedVenues.length}
-          isRealUserLocation={referenceLocation.isRealUserLocation}
-          isLoading={isLoadingPOIs}
-          onSelectVenue={handleSelectVenueFromPeek}
-        />
+
+
+      {/* 6b. Live Activity Floating Toast (Bottom-Left Smart Placement - Minimal & Non-intrusive) */}
+      {!activePlace && !selectedBackgroundPOI && !isRadarOpen && !showFullFilterSheet && (
+        <div className="absolute bottom-20 sm:bottom-6 left-3.5 sm:left-4 z-20 pointer-events-auto max-w-[340px] sm:max-w-md animate-fade-in">
+          <FomoLiveTicker
+            places={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
+            onSelectPlaceByCoords={(lat, lng, placeId) => {
+              handleFlyTo(lat, lng, 16.5);
+              if (placeId) {
+                const match =
+                  places.find((p) => p.id === placeId) ||
+                  allLoadedVenues.find((v: any) => v.id === placeId);
+                if (match) {
+                  onSelectPlace(match as Place);
+                }
+              }
+            }}
+            onOpenMysteryDrop={() => setShowMysteryDrop(true)}
+            onOpenTrafficSheet={() => setShowTrafficSheet(true)}
+          />
+        </div>
       )}
 
       {/* 6c. Bottom Opportunity Carousel (Rendered when Radar destination/tab is active) */}
@@ -2174,14 +2354,9 @@ export const MapView: React.FC<MapViewProps> = ({
                         <span>✅</span>
                         <span>Đã ghé thăm</span>
                       </span>
-                    ) : poiHotness.isHot ? (
-                      <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white font-heading text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
-                        <span>🔥</span>
-                        <span>{poiHotness.badgeLabel || 'Đang Hot (24h)'}</span>
-                      </span>
                     ) : (
                       <span className="bg-[#F4F4F5] text-[#71717A] border border-[#E4E4E7] font-heading text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <span>🔍 Chưa khám phá (+50 XP)</span>
+                        <span>🔍 +50 XP khi check-in</span>
                       </span>
                     )}
                   </div>
@@ -2204,23 +2379,6 @@ export const MapView: React.FC<MapViewProps> = ({
 
               {/* Body */}
               <div className="p-3 overflow-y-auto space-y-2 text-xs">
-                {/* 24h Hotness Media / Rating Spotlight */}
-                {poiHotness.isHot && !isVisited && (
-                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200/80 rounded-xl p-2 flex items-center justify-between text-[11px] text-orange-950 font-medium">
-                    <span className="flex items-center gap-1 truncate">
-                      <span>🔥</span>
-                      <strong className="text-orange-900 truncate">
-                        {poiHotness.pressMention ? `"${poiHotness.pressMention.headline}"` : (poiHotness.reasons[0] || 'Xu hướng ẩm thực')}
-                      </strong>
-                    </span>
-                    {poiHotness.pressMention && (
-                      <span className="text-[10px] text-orange-700 bg-white/80 px-1.5 py-0.2 rounded border border-orange-200 shrink-0 ml-1">
-                        {poiHotness.pressMention.source}
-                      </span>
-                    )}
-                  </div>
-                )}
-
                 {/* Distance & Info */}
                 <div className="flex items-center justify-between text-[11px] text-[#594139] bg-[#FAF9F5] p-2 rounded-xl border border-[#2D2926]/5">
                   <div className="flex items-center gap-1 font-heading font-bold text-[#2D2926]">
@@ -2370,13 +2528,9 @@ export const MapView: React.FC<MapViewProps> = ({
                     <span className="bg-[#10B981] text-white font-heading text-[10px] font-bold px-2 py-0.2 rounded-full shadow-2xs flex items-center gap-0.5">
                       <span>✓ Đã chinh phục</span>
                     </span>
-                  ) : placeHotness.isHot ? (
-                    <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white font-heading text-[10px] font-bold px-2 py-0.2 rounded-full shadow-2xs flex items-center gap-0.5">
-                      <span>🔥 {placeHotness.badgeLabel || 'Hot 24h'}</span>
-                    </span>
                   ) : (
                     <span className="bg-black/60 backdrop-blur-md text-white font-heading text-[10px] font-medium px-2 py-0.2 rounded-full border border-white/20 flex items-center gap-0.5">
-                      <span>🔍 +50 XP</span>
+                      <span>🔍 +50 XP khi check-in</span>
                     </span>
                   )}
 
@@ -2416,15 +2570,6 @@ export const MapView: React.FC<MapViewProps> = ({
                     </span>
                   </p>
                 </div>
-
-                {/* 24h Hotness / Press compact line */}
-                {placeHotness.isHot && !isPlaceVisited && placeHotness.pressMention && (
-                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200/70 rounded-xl p-1.5 text-[11px] text-orange-950 flex items-center justify-between gap-1">
-                    <span className="truncate">
-                      <strong>📰 {placeHotness.pressMention.source}:</strong> <span className="italic">"{placeHotness.pressMention.headline}"</span>
-                    </span>
-                  </div>
-                )}
 
                 {/* Distance & Address */}
                 <div className="flex items-center justify-between text-[11px] text-[#594139] bg-[#FAF9F5] p-2 rounded-xl border border-[#2D2926]/5">
@@ -2696,6 +2841,20 @@ export const MapView: React.FC<MapViewProps> = ({
             setSelectedBackgroundPOI(venue as UnifiedPlace);
           }
           handleFlyTo(venue.latitude, venue.longitude, 16.5);
+        }}
+      />
+      {/* 14. 🔥 2/9 National Day Hot Event Modal */}
+      <HolidayEventModal
+        isOpen={showHolidayEventModal}
+        onClose={() => setShowHolidayEventModal(false)}
+        onSelectEventLocation={(coords, name) => {
+          handleFlyTo(coords.latitude, coords.longitude, 15.5);
+          const matched =
+            places.find((p) => p.name.toLowerCase().includes(name.toLowerCase())) ||
+            allLoadedVenues.find((v: any) => v.name.toLowerCase().includes(name.toLowerCase()));
+          if (matched) {
+            onSelectPlace(matched as Place);
+          }
         }}
       />
     </div>

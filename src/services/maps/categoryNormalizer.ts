@@ -209,19 +209,45 @@ export function normalizeVietnameseText(str: string): string {
  * 3. Normalized Name Keywords (Priority 3) -> NAME_KEYWORD
  * 4. Generic Parent Fallback (Priority 4) -> GENERIC_FALLBACK
  */
-export function classifyVenue(venue: {
+export function classifyVenue(venueInput: {
   name?: string;
   category?: string;
   categoryLabel?: string;
   categories?: string[];
   communityCategory?: string;
-}): ClassificationResult {
+} | string | null | undefined): ClassificationResult {
+  if (!venueInput) {
+    return { category: 'OTHER_FOOD', source: 'GENERIC_FALLBACK', confidence: 0.40 };
+  }
+
+  const venue = typeof venueInput === 'string'
+    ? { category: venueInput, categoryLabel: venueInput, name: venueInput }
+    : venueInput;
+
   const name = (venue.name || '').trim();
   const normName = normalizeVietnameseText(name);
   const rawCat = (venue.category || '').toLowerCase().trim();
   const rawLabel = (venue.categoryLabel || '').toLowerCase().trim();
   const rawList = Array.isArray(venue.categories) ? venue.categories.map((c) => String(c).toLowerCase().trim()) : [];
   const commCat = (venue.communityCategory || '').toLowerCase().trim();
+
+  // Direct check if raw string matches canonical metadata labels or keys
+  const directUpper = (venue.category || venue.name || '').toUpperCase().trim();
+  if (directUpper in CANONICAL_CATEGORIES) {
+    return { category: directUpper as CanonicalCategory, source: 'PROVIDER_EXPLICIT', confidence: 1.0 };
+  }
+
+  // Check matching by shortLabel or label
+  for (const [key, meta] of Object.entries(CANONICAL_CATEGORIES)) {
+    if (
+      normalizeVietnameseText(meta.label) === normName ||
+      normalizeVietnameseText(meta.shortLabel) === normName ||
+      normalizeVietnameseText(meta.label) === normalizeVietnameseText(rawLabel) ||
+      normalizeVietnameseText(meta.shortLabel) === normalizeVietnameseText(rawLabel)
+    ) {
+      return { category: key as CanonicalCategory, source: 'PROVIDER_EXPLICIT', confidence: 0.98 };
+    }
+  }
 
   // 1. Explicit Provider Categories (Priority 1)
   if (rawList.some((c) => c.includes('catering.cafe') || c.includes('coffee') || c.includes('tea'))) {
@@ -395,14 +421,33 @@ export function classifyVenue(venue: {
 /**
  * Deterministic category normalization helper (returns canonical category id).
  */
-export function normalizeCategory(venue: {
+export function normalizeCategory(venueOrInput: {
   name?: string;
   category?: string;
   categoryLabel?: string;
   categories?: string[];
   communityCategory?: string;
-}): CanonicalCategory {
-  return classifyVenue(venue).category;
+} | string | null | undefined): CanonicalCategory {
+  if (!venueOrInput) return 'OTHER_FOOD';
+  return classifyVenue(venueOrInput).category;
+}
+
+/**
+ * Normalizes any category filter input into ExploreFilterCategory ('ALL' | CanonicalCategory).
+ */
+export function normalizeExploreFilterCategory(
+  input: ExploreFilterCategory | string | null | undefined
+): ExploreFilterCategory {
+  if (!input) return 'ALL';
+  const trimmed = typeof input === 'string' ? input.trim() : String(input).trim();
+  const upper = trimmed.toUpperCase();
+  if (upper === 'ALL' || trimmed === 'Tất cả' || trimmed === 'tat ca' || trimmed === '') {
+    return 'ALL';
+  }
+  if (upper in CANONICAL_CATEGORIES) {
+    return upper as CanonicalCategory;
+  }
+  return normalizeCategory(trimmed);
 }
 
 /**
@@ -662,6 +707,118 @@ export function computeAllCategoryFilterCounts(
 }
 
 /**
+ * Extracts recognized culinary and venue category keywords from a conversational or raw user query.
+ * Examples: "tôi muốn ăn mì cay" -> ['NOODLE'], "tìm quán cafe yên tĩnh" -> ['CAFE_DRINK']
+ */
+export function extractSearchCategoryKeywords(query: string): {
+  categories: CanonicalCategory[];
+  keywords: string[];
+} {
+  if (!query || !query.trim()) return { categories: [], keywords: [] };
+  const raw = query.toLowerCase();
+  const norm = normalizeVietnameseText(raw);
+  const categories: CanonicalCategory[] = [];
+  const keywords: string[] = [];
+
+  // Mì, mì cay, bún, miến, hủ tiếu, ramen, bún chả, bún đậu -> NOODLE
+  if (
+    raw.includes('mì cay') ||
+    norm.includes('mi cay') ||
+    raw.includes('mì') ||
+    norm.includes('mi ') ||
+    norm.endsWith('mi') ||
+    raw.includes('bún') ||
+    norm.includes('bun') ||
+    raw.includes('hủ tiếu') ||
+    norm.includes('hu tieu') ||
+    raw.includes('miến') ||
+    norm.includes('mien') ||
+    raw.includes('ramen') ||
+    norm.includes('ramen') ||
+    raw.includes('noodle')
+  ) {
+    categories.push('NOODLE');
+    if (raw.includes('mì cay') || norm.includes('mi cay')) keywords.push('mì cay', 'cay', 'mì', 'mi');
+    if (raw.includes('bún') || norm.includes('bun')) keywords.push('bún', 'bun');
+    if (raw.includes('mì') || norm.includes('mi')) keywords.push('mì', 'mi');
+    if (raw.includes('ramen')) keywords.push('ramen');
+  }
+
+  // Phở -> PHO
+  if (raw.includes('phở') || norm.includes('pho')) {
+    categories.push('PHO');
+    keywords.push('phở', 'pho');
+  }
+
+  // Cafe, Cà phê, Trà, Coffee, Tea -> CAFE_DRINK
+  if (
+    raw.includes('cafe') ||
+    raw.includes('cà phê') ||
+    norm.includes('ca phe') ||
+    raw.includes('coffee') ||
+    raw.includes('trà') ||
+    norm.includes('tra ') ||
+    norm.endsWith('tra') ||
+    raw.includes('tea')
+  ) {
+    categories.push('CAFE_DRINK');
+    keywords.push('cafe', 'cà phê', 'ca phe', 'coffee', 'trà', 'tra');
+  }
+
+  // Lẩu, Hotpot -> HOTPOT
+  if (raw.includes('lẩu') || norm.includes('lau') || raw.includes('hotpot')) {
+    categories.push('HOTPOT');
+    keywords.push('lẩu', 'lau', 'hotpot');
+  }
+
+  // Nướng, BBQ, Grill -> BBQ
+  if (raw.includes('nướng') || norm.includes('nuong') || raw.includes('bbq') || raw.includes('grill')) {
+    categories.push('BBQ');
+    keywords.push('nướng', 'nuong', 'bbq');
+  }
+
+  // Cơm, Cơm tấm, Xôi -> RICE
+  if (raw.includes('cơm') || norm.includes('com') || raw.includes('xôi') || norm.includes('xoi')) {
+    categories.push('RICE');
+    keywords.push('cơm', 'com', 'xôi', 'xoi');
+  }
+
+  // Bánh mì, Fast food, Burger, Pizza, Gà rán -> FAST_FOOD
+  if (
+    raw.includes('bánh mì') ||
+    norm.includes('banh mi') ||
+    raw.includes('burger') ||
+    raw.includes('pizza') ||
+    raw.includes('fast food') ||
+    raw.includes('gà rán') ||
+    norm.includes('ga ran')
+  ) {
+    categories.push('FAST_FOOD');
+    keywords.push('bánh mì', 'banh mi', 'burger', 'pizza', 'fast food', 'gà rán');
+  }
+
+  // Chè, Kem, Tráng miệng -> BAKERY_DESSERT
+  if (raw.includes('chè') || norm.includes('che') || raw.includes('kem') || raw.includes('bánh') || norm.includes('banh')) {
+    categories.push('BAKERY_DESSERT');
+    keywords.push('chè', 'che', 'kem', 'bánh');
+  }
+
+  // Bia, Pub, Bar -> BAR_BEER
+  if (raw.includes('bia') || raw.includes('pub') || raw.includes('bar') || raw.includes('nhậu') || norm.includes('nhau')) {
+    categories.push('BAR_BEER');
+    keywords.push('bia', 'pub', 'bar');
+  }
+
+  // Chay, Vegan -> VEGETARIAN
+  if (raw.includes('chay') || norm.includes('chay') || raw.includes('vegan') || raw.includes('vegetarian')) {
+    categories.push('VEGETARIAN');
+    keywords.push('chay', 'vegan');
+  }
+
+  return { categories, keywords };
+}
+
+/**
  * Checks if a string contains explicit Vietnamese diacritics (tones, accents, đ).
  */
 export function hasVietnameseDiacritics(str: string): boolean {
@@ -701,6 +858,22 @@ export function matchVenueSearch(
 
   const classification = classifyVenue(venue);
   const meta = CANONICAL_CATEGORIES[classification.category];
+
+  // 0. Smart Keyword & Intent Extraction (BEFORE matching place names)
+  // Handles conversational natural language queries (e.g., "tôi muốn ăn mì cay", "tìm quán cafe yên tĩnh")
+  const { categories: extractedCats, keywords: extractedKws } = extractSearchCategoryKeywords(qRaw);
+  if (extractedCats.length > 0) {
+    if (extractedCats.includes(classification.category)) {
+      return true;
+    }
+    const venueLower = venueName.toLowerCase();
+    const venueNormLower = normName.toLowerCase();
+    for (const kw of extractedKws) {
+      if (venueLower.includes(kw) || venueNormLower.includes(kw)) {
+        return true;
+      }
+    }
+  }
 
   // 1. Direct raw case-insensitive match (highest fidelity for accented inputs)
   if (venueName.toLowerCase().includes(qRaw)) {
@@ -895,6 +1068,18 @@ export function getVenueSearchRelevance(
 
   // Category match bonus
   const classification = classifyVenue(venue);
+  const { categories: extractedCats, keywords: extractedKws } = extractSearchCategoryKeywords(qRaw);
+  if (extractedCats.length > 0) {
+    if (extractedCats.includes(classification.category)) {
+      score = Math.max(score, 85);
+    }
+    for (const kw of extractedKws) {
+      if (venueNameLower.includes(kw) || normName.includes(kw)) {
+        score = Math.max(score, 90);
+      }
+    }
+  }
+
   if (['pho', 'pho bo', 'pho ga'].includes(qNorm) && classification.category === 'PHO') {
     score = Math.max(score, 85);
   } else if (['cafe', 'coffee', 'ca phe'].includes(qNorm) && classification.category === 'CAFE_DRINK') {

@@ -59,7 +59,7 @@ export default function App() {
     INITIAL_ACHIEVEMENTS.map((a) => ({ ...a, isUnlocked: false, unlockedAt: undefined }))
   );
 
-  const [selectedPlace, setSelectedPlace] = useState<Place | null>(INITIAL_PLACES[0] || null);
+  const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [cameraPreselectedPlace, setCameraPreselectedPlace] = useState<Place | null>(null);
   const [savedPlaceIds, setSavedPlaceIds] = useState<string[]>(['place_blackbird_coffee']);
 
@@ -753,7 +753,18 @@ export default function App() {
         isOpen={showBiteBotModal}
         onClose={() => setShowBiteBotModal(false)}
         places={places}
-        userLocation={{ latitude: 21.0285, longitude: 105.7958, district: passport.districtName || 'Cầu Giấy' }}
+        userLocation={(() => {
+          try {
+            const cached = localStorage.getItem('bitequest_last_user_location');
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (parsed?.latitude && parsed?.longitude) {
+                return { latitude: parsed.latitude, longitude: parsed.longitude, district: passport.districtName || 'Vị trí hiện tại' };
+              }
+            }
+          } catch {}
+          return { latitude: 21.0285, longitude: 105.7958, district: passport.districtName || 'Cầu Giấy' };
+        })()}
         userPreferences={user.foodPreferences}
         onSelectPlace={(place) => {
           setSelectedPlace(place);
