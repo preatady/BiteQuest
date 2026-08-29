@@ -291,6 +291,88 @@ const ambientVenueLabelLayer: any = {
   },
 };
 
+// Promoted / Curated BiteQuest places native WebGL symbol layers
+const promotedPlacesIconLayer: any = {
+  id: 'promoted-places-icons',
+  type: 'symbol',
+  source: 'promoted-places-source',
+  layout: {
+    'icon-image': ['coalesce', ['get', 'iconName'], 'icon-other_food-unvisited'],
+    'icon-size': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      11.5,
+      0.72,
+      13.5,
+      0.9,
+      15.5,
+      1.08,
+      17.5,
+      1.25,
+    ],
+    'icon-allow-overlap': true,
+    'icon-ignore-placement': true,
+    'icon-padding': 4,
+  },
+  paint: {
+    'icon-opacity': [
+      'case',
+      ['==', ['get', 'isDimmed'], 1],
+      0.35,
+      0.95,
+    ],
+  },
+};
+
+const promotedPlacesLabelLayer: any = {
+  id: 'promoted-places-labels',
+  type: 'symbol',
+  source: 'promoted-places-source',
+  minzoom: 13.5,
+  layout: {
+    'text-field': ['get', 'name'],
+    'text-font': ['Noto Sans Bold'],
+    'text-size': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      13.5,
+      10,
+      15.5,
+      11.5,
+      17.5,
+      13,
+    ],
+    'text-offset': [0, 1.35],
+    'text-anchor': 'top',
+    'text-max-width': 9.5,
+    'text-padding': 3,
+    'text-optional': true,
+    'text-allow-overlap': false,
+    'text-ignore-placement': false,
+  },
+  paint: {
+    'text-color': [
+      'case',
+      ['==', ['get', 'isVisited'], 1],
+      '#065F46',
+      ['==', ['get', 'isHot'], 1],
+      '#C2410C',
+      '#1C1917',
+    ],
+    'text-halo-color': '#FFFFFF',
+    'text-halo-width': 2.5,
+    'text-halo-blur': 0.5,
+    'text-opacity': [
+      'case',
+      ['==', ['get', 'isDimmed'], 1],
+      0.4,
+      0.95,
+    ],
+  },
+};
+
 // Fallback map center in Cầu Giấy (explicitly used when browser GPS is unavailable/denied)
 const FALLBACK_CENTER = { latitude: 21.0285, longitude: 105.7958 };
 
@@ -829,82 +911,81 @@ export const MapView: React.FC<MapViewProps> = ({
   }, [localPromotedPlaces, activeCategoryFilter, searchQuery]);
 
   const activePlace = selectedPlace;
+  const activeSelectedPlace = activePlace || selectedTrafficRoute?.place;
   const activeOpportunity = activePlace ? opportunityMap.get(activePlace.id) : null;
   const isSaved = activePlace ? savedPlaceIds.includes(activePlace.id) : false;
 
-  // Information Hierarchy for interactive React markers:
-  // - Far zoom (< 12.5): Only selected focal point & top recommendation (1 place) to prevent visual noise.
-  // - Medium zoom (12.5 <= zoom < 14.5): High relevance places (selected, top recommendation, active quest/scout, friend echo, visited, bookmarks, top-rated).
-  // - Close zoom (>= 14.5): All curated places with full category icons and collision-safe distribution.
-  // - Search/Filter: Only places matching the search query or category filter.
-  // - Selected place is always the prominent focal point.
-  const visibleReactMarkerPlaces = useMemo(() => {
-    const isSearchActive = Boolean(searchQuery.trim());
-    const isFilterActive = activeCategoryFilter !== 'ALL';
+  // Curated Promoted BiteQuest Places GeoJSON FeatureCollection (GPU WebGL hardware-accelerated)
+  const promotedPlacesGeoJSON: GeoJSON.FeatureCollection<GeoJSON.Point> = useMemo(() => {
     const topRecommendationId = todayOpportunities.length > 0 ? todayOpportunities[0].venueId : null;
 
-    return filteredPlaces.filter((place) => {
-      const isSelected = activePlace?.id === place.id;
-      const isTrafficSelected = selectedTrafficRoute?.place?.id === place.id;
-      if (isSelected || isTrafficSelected) return true;
+    return {
+      type: 'FeatureCollection',
+      features: filteredPlaces
+        // Exclude currently active selected place so it doesn't duplicate beneath the high-fidelity selected HTML Marker
+        .filter((place) => place.id !== activeSelectedPlace?.id)
+        .map((place) => {
+          const canonicalCat = normalizeCategory(place);
+          const meta = getCategoryMetadata(canonicalCat);
+          const isVisited =
+            visitedPlaceIds.has(place.id) ||
+            Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
+            Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
 
-      // When searching or category filtering, show all matching results
-      if (isSearchActive || isFilterActive) return true;
+          const vId = place.id || (place as any).providerPlaceId || place.name;
+          const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(place, hotnessSnapshot.calculatedAt);
+          const isHot = !isVisited && hotness.isHot;
 
-      const isTopRecommended = topRecommendationId === place.id;
-      if (isTopRecommended) return true;
+          const opp = opportunityMap.get(place.id);
+          const isScout = opp?.type === 'SCOUT_WINDOW';
+          const isQuest = opp?.type === 'QUEST_MATCH';
+          const isFriendEcho = opp?.type === 'FRIEND_ECHO' && Boolean(opp.friendActivity);
+          const isFriendActive = isFriendEcho || (place.friendsVisited && place.friendsVisited.length > 0);
+          const isQuestActive = isQuest || isScout;
 
-      const opp = opportunityMap.get(place.id);
-      const isScout = opp?.type === 'SCOUT_WINDOW';
-      const isQuest = opp?.type === 'QUEST_MATCH';
-      const isFriendEcho = opp?.type === 'FRIEND_ECHO' && Boolean(opp.friendActivity);
-      const isBookmarked = savedPlaceIds.includes(place.id);
-      const isVisited =
-        visitedPlaceIds.has(place.id) ||
-        Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
-        Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
+          const isDimmedInMode =
+            (exploreMode === 'friends' && !isFriendActive) ||
+            (exploreMode === 'quest' && !isQuestActive);
 
-      const vId = place.id || (place as any).providerPlaceId || place.name;
-      const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(place, hotnessSnapshot.calculatedAt);
-      const isHot = !isVisited && hotness.isHot;
+          const isTopRecommended = topRecommendationId === place.id;
 
-      if (exploreMode === 'friends') return isFriendEcho || (place.friendsVisited && place.friendsVisited.length > 0);
-      if (exploreMode === 'quest') return isQuest || isScout;
+          const iconName = isVisited
+            ? `icon-${canonicalCat.toLowerCase()}-visited`
+            : isHot
+            ? `icon-${canonicalCat.toLowerCase()}-hot`
+            : `icon-${canonicalCat.toLowerCase()}-unvisited`;
 
-      // Far zoom: only selected & top recommended (and active quest/scout if any)
-      if (currentZoom < 12.5) {
-        return isScout || isQuest;
-      }
-
-      // Medium zoom: only prominent relevance places
-      if (currentZoom < 14.5) {
-        return (
-          isScout ||
-          isQuest ||
-          isFriendEcho ||
-          isBookmarked ||
-          isVisited ||
-          isHot ||
-          (place.rating && place.rating >= 4.5)
-        );
-      }
-
-      // Close zoom: render curated places
-      return true;
-    });
+          return {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [place.longitude, place.latitude],
+            },
+            properties: {
+              id: place.id,
+              name: place.name,
+              category: place.category,
+              canonicalCategory: canonicalCat,
+              categoryLabel: meta.label,
+              iconName,
+              isVisited: isVisited ? 1 : 0,
+              isHot: isHot ? 1 : 0,
+              isScout: isScout ? 1 : 0,
+              isQuest: isQuest ? 1 : 0,
+              isTopRecommended: isTopRecommended ? 1 : 0,
+              isDimmed: isDimmedInMode ? 1 : 0,
+            },
+          };
+        }),
+    };
   }, [
     filteredPlaces,
-    activePlace?.id,
-    selectedTrafficRoute?.place?.id,
-    searchQuery,
-    activeCategoryFilter,
-    todayOpportunities,
-    opportunityMap,
-    savedPlaceIds,
+    activeSelectedPlace?.id,
     visitedPlaceIds,
     hotnessSnapshot,
+    opportunityMap,
+    todayOpportunities,
     exploreMode,
-    currentZoom,
   ]);
 
   // Filtered radar opportunities for the bottom carousel
@@ -1020,7 +1101,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
     // 1. Check custom BiteQuest GeoJSON interactive layers
     const features = map.queryRenderedFeatures(event.point, {
-      layers: ['clusters', 'unclustered-category-icon', 'ambient-venue-labels'],
+      layers: ['clusters', 'promoted-places-icons', 'promoted-places-labels', 'unclustered-category-icon', 'ambient-venue-labels'],
     });
 
     if (features && features.length > 0) {
@@ -1047,6 +1128,25 @@ export const MapView: React.FC<MapViewProps> = ({
           });
         }
         return;
+      }
+
+      // Handle promoted / curated place tap from native WebGL layer
+      if (
+        feature.layer.id === 'promoted-places-icons' ||
+        feature.layer.id === 'promoted-places-labels'
+      ) {
+        const placeId = feature.properties?.id;
+        const place =
+          places.find((p) => p.id === placeId) ||
+          localPromotedPlaces.find((p) => p.id === placeId) ||
+          allLoadedVenues.find((p) => (p as any).id === placeId);
+
+        if (place) {
+          setSelectedBackgroundPOI(null);
+          onSelectPlace(place as Place);
+          handleFlyTo(place.latitude, place.longitude);
+          return;
+        }
       }
 
       if (
@@ -1234,7 +1334,7 @@ export const MapView: React.FC<MapViewProps> = ({
           mapStyle={activeMapStyle}
           style={{ width: '100%', height: '100%' }}
           attributionControl={false}
-          interactiveLayerIds={['clusters', 'unclustered-category-icon', 'ambient-venue-labels']}
+          interactiveLayerIds={['clusters', 'promoted-places-icons', 'promoted-places-labels', 'unclustered-category-icon', 'ambient-venue-labels']}
           onClick={handleMapClick}
           onMove={(e) => {
             if (e.viewState?.zoom) {
@@ -1400,205 +1500,101 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
           </Marker>
 
-          {/* Promoted BiteQuest Layer Markers (Hierarchical Category Badge Pins, 0 Grey Dots) */}
-          {visibleReactMarkerPlaces.map((place) => {
-            const isSelected = activePlace?.id === place.id;
-            const isTrafficSelected = selectedTrafficRoute?.place?.id === place.id;
-            const opp = opportunityMap.get(place.id);
-            const isBookmarked = savedPlaceIds.includes(place.id);
+          {/* Promoted BiteQuest Layer (GPU Native WebGL Symbol & Label Layers - Single Draw Call) */}
+          <Source id="promoted-places-source" type="geojson" data={promotedPlacesGeoJSON}>
+            <Layer {...promotedPlacesIconLayer} />
+            <Layer {...promotedPlacesLabelLayer} />
+          </Source>
+
+          {/* High-Fidelity Active Focused Marker (Rendered only for the single currently active/selected place) */}
+          {activeSelectedPlace && (() => {
+            const opp = opportunityMap.get(activeSelectedPlace.id);
+            const isBookmarked = savedPlaceIds.includes(activeSelectedPlace.id);
             const isVisited =
-              visitedPlaceIds.has(place.id) ||
-              Boolean(place.providerPlaceId && visitedPlaceIds.has(place.providerPlaceId)) ||
-              Boolean(place.googlePlaceId && visitedPlaceIds.has(place.googlePlaceId));
-
-            const isTopRecommended = todayOpportunities.length > 0 && todayOpportunities[0].venueId === place.id;
-
-            const vId = place.id || (place as any).providerPlaceId || place.name;
-            const hotness = hotnessSnapshot.venues[vId] || calculateVenueHotness(place, hotnessSnapshot.calculatedAt);
-            const isHot = !isVisited && hotness.isHot;
-            const catMeta = CANONICAL_CATEGORIES[normalizeCategory(place)];
-
-            const isScout = opp?.type === 'SCOUT_WINDOW';
-            const isQuest = opp?.type === 'QUEST_MATCH';
-            const isFriendEcho = opp?.type === 'FRIEND_ECHO' && Boolean(opp.friendActivity);
-
-            const isFriendActive = isFriendEcho || (place.friendsVisited && place.friendsVisited.length > 0);
-            const isQuestActive = isQuest || isScout;
-            const isDimmedInMode =
-              (exploreMode === 'friends' && !isFriendActive) ||
-              (exploreMode === 'quest' && !isQuestActive);
-
-            // Determine pin color and status badge following strict hierarchy:
-            // 1. Selected: Primary Orange #FF6B35 + pulse ring + z-50
-            // 2. Top Recommendation / Scout: Teal #2EC4B6 + 🥇 badge + z-40
-            // 3. Visited: Calm Emerald #059669 + ✓ badge + z-25
-            // 4. Saved: Sky #0284C7 + ★ badge + z-25
-            // 5. Quest: Amber #F59E0B + 🗺️ badge + z-30
-            // 6. Friend Echo: Orange #FF6B35 + 👥 badge + z-30
-            // 7. Hot: #EA580C + 🔥 badge + z-28
-            // 8. Normal Curated: Category Color + category emoji glyph + z-20
-
-            let pinBg = catMeta?.color || '#57534E';
-            let pinBorder = '#FFFFFF';
-            let pinTipBorder = 'border-t-stone-700';
-            let badgeGlyph = catMeta?.symbolGlyph || '🍴';
-            let statusBadge: string | null = null;
-            let statusBadgeBg = '#10B981';
-
-            if (isSelected || isTrafficSelected) {
-              pinBg = '#FF6B35';
-              pinBorder = '#FFFFFF';
-              pinTipBorder = 'border-t-[#FF6B35]';
-            } else if (isTopRecommended || isScout) {
-              pinBg = '#2EC4B6';
-              pinBorder = '#FEF08A';
-              pinTipBorder = 'border-t-[#2EC4B6]';
-              statusBadge = '🥇';
-              statusBadgeBg = '#F59E0B';
-            } else if (isVisited) {
-              pinBg = '#059669';
-              pinBorder = '#FFFFFF';
-              pinTipBorder = 'border-t-[#059669]';
-              statusBadge = '✓';
-              statusBadgeBg = '#059669';
-            } else if (isQuest) {
-              pinBg = '#F59E0B';
-              pinBorder = '#1C1917';
-              pinTipBorder = 'border-t-[#F59E0B]';
-              badgeGlyph = '🗺️';
-            } else if (isFriendEcho) {
-              pinBg = '#FF6B35';
-              pinBorder = '#FFFFFF';
-              pinTipBorder = 'border-t-[#FF6B35]';
-              badgeGlyph = '👥';
-            } else if (isBookmarked) {
-              pinBg = '#0284C7';
-              pinBorder = '#FFFFFF';
-              pinTipBorder = 'border-t-[#0284C7]';
-              statusBadge = '★';
-              statusBadgeBg = '#0284C7';
-            } else if (isHot) {
-              pinBg = '#EA580C';
-              pinBorder = '#FEF08A';
-              pinTipBorder = 'border-t-[#EA580C]';
-              statusBadge = '🔥';
-              statusBadgeBg = '#EF4444';
-            }
-
-            const isNormal =
-              !isSelected &&
-              !isTrafficSelected &&
-              !isTopRecommended &&
-              !isScout &&
-              !isVisited &&
-              !isQuest &&
-              !isFriendEcho &&
-              !isBookmarked &&
-              !isHot;
+              visitedPlaceIds.has(activeSelectedPlace.id) ||
+              Boolean(activeSelectedPlace.providerPlaceId && visitedPlaceIds.has(activeSelectedPlace.providerPlaceId)) ||
+              Boolean(activeSelectedPlace.googlePlaceId && visitedPlaceIds.has(activeSelectedPlace.googlePlaceId));
+            const isTopRecommended = todayOpportunities.length > 0 && todayOpportunities[0].venueId === activeSelectedPlace.id;
+            const catMeta = CANONICAL_CATEGORIES[normalizeCategory(activeSelectedPlace)];
+            const badgeGlyph = catMeta?.symbolGlyph || '🍴';
 
             return (
               <Marker
-                key={place.id}
-                longitude={place.longitude}
-                latitude={place.latitude}
+                key={activeSelectedPlace.id}
+                longitude={activeSelectedPlace.longitude}
+                latitude={activeSelectedPlace.latitude}
                 anchor="bottom"
                 onClick={(e) => {
                   e.originalEvent.stopPropagation();
                   setSelectedBackgroundPOI(null);
-                  onSelectPlace(place);
-                  handleFlyTo(place.latitude, place.longitude);
+                  onSelectPlace(activeSelectedPlace);
+                  handleFlyTo(activeSelectedPlace.latitude, activeSelectedPlace.longitude);
                 }}
               >
                 <div
-                  className={`relative group cursor-pointer transform hover:scale-115 active:scale-95 transition-all duration-200 ${
-                    isSelected || isTrafficSelected
-                      ? 'opacity-100 z-50 scale-110'
-                      : isVenueSelected
-                      ? 'opacity-25 scale-85 z-10 hover:opacity-85 hover:scale-100 hover:z-30'
-                      : isDimmedInMode
-                      ? 'opacity-30 scale-80 z-10'
-                      : isNormal
-                      ? 'opacity-85 z-20 hover:opacity-100'
-                      : 'opacity-95 z-30 hover:opacity-100'
-                  }`}
-                  id={`marker-promoted-${place.id}`}
+                  className="relative group cursor-pointer transform scale-110 opacity-100 z-50 transition-all duration-200"
+                  id={`marker-promoted-${activeSelectedPlace.id}`}
                 >
                   {/* Outer Pulsing Active Choice Ring for Selected Place */}
-                  {(isSelected || isTrafficSelected) && (
-                    <div className="absolute -inset-2.5 rounded-full bg-[#FF6B35]/40 animate-ping pointer-events-none"></div>
-                  )}
+                  <div className="absolute -inset-2.5 rounded-full bg-[#FF6B35]/40 animate-ping pointer-events-none"></div>
 
                   {/* Top Recommendation Gợi Ý Ring */}
-                  {!isSelected && isTopRecommended && (
+                  {isTopRecommended && (
                     <div className="absolute -inset-1 rounded-full ring-2 ring-amber-400/70 animate-pulse pointer-events-none"></div>
                   )}
 
-                  {/* Marker Pin Head - Scaled to strict 4-level hierarchy */}
+                  {/* Marker Pin Head */}
                   <div
-                    className={`relative flex items-center justify-center rounded-full border transition-all ${
-                      isSelected || isTrafficSelected
-                        ? 'w-10 h-10 border-2 border-white ring-4 ring-[#FF6B35]/35 shadow-lg text-white'
-                        : isTopRecommended || isScout
-                        ? 'w-8.5 h-8.5 border-2 border-amber-200 ring-2 ring-amber-400/50 shadow-md text-white'
-                        : isNormal
-                        ? 'w-6.5 h-6.5 border-[1.5px] border-white/90 shadow-xs text-white'
-                        : 'w-7.5 h-7.5 border-2 border-white shadow-sm text-white'
-                    }`}
+                    className="relative flex items-center justify-center rounded-full border transition-all w-10 h-10 border-2 border-white ring-4 ring-[#FF6B35]/35 shadow-lg text-white"
                     style={{
-                      backgroundColor: pinBg,
-                      borderColor: isNormal ? '#FFFFFF' : pinBorder,
+                      backgroundColor: '#FF6B35',
+                      borderColor: '#FFFFFF',
                     }}
                   >
-                    <span
-                      className={
-                        isSelected || isTrafficSelected
-                          ? 'text-[14px]'
-                          : isTopRecommended || isScout
-                          ? 'text-[12px]'
-                          : isNormal
-                          ? 'text-[10px]'
-                          : 'text-[11.5px]'
-                      }
-                    >
-                      {badgeGlyph}
-                    </span>
+                    <span className="text-[14px]">{badgeGlyph}</span>
 
-                    {/* Status Badge (🥇, ✓, ★, 🔥) */}
-                    {statusBadge && (
+                    {/* Status Badge (🥇, ✓, ★) */}
+                    {isTopRecommended ? (
                       <span
                         className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border border-white flex items-center justify-center text-[8px] text-white font-bold shadow-xs"
-                        style={{ backgroundColor: statusBadgeBg }}
+                        style={{ backgroundColor: '#F59E0B' }}
                       >
-                        {statusBadge}
+                        🥇
                       </span>
-                    )}
+                    ) : isVisited ? (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border border-white flex items-center justify-center text-[8px] text-white font-bold shadow-xs"
+                        style={{ backgroundColor: '#059669' }}
+                      >
+                        ✓
+                      </span>
+                    ) : isBookmarked ? (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full border border-white flex items-center justify-center text-[8px] text-white font-bold shadow-xs"
+                        style={{ backgroundColor: '#0284C7' }}
+                      >
+                        ★
+                      </span>
+                    ) : null}
                   </div>
 
                   {/* Bottom Pin Tip */}
-                  <div
-                    className={`w-0 h-0 mx-auto ${
-                      isSelected || isTrafficSelected
-                        ? 'border-l-[5px] border-r-[5px] border-t-[6px] -mt-0.5'
-                        : isNormal
-                        ? 'border-l-[3px] border-r-[3px] border-t-[4px] -mt-0.5'
-                        : 'border-l-[4px] border-r-[4px] border-t-[5px] -mt-0.5'
-                    } border-l-transparent border-r-transparent ${pinTipBorder}`}
-                  ></div>
+                  <div className="w-0 h-0 mx-auto border-l-[5px] border-r-[5px] border-t-[6px] -mt-0.5 border-l-transparent border-r-transparent border-t-[#FF6B35]"></div>
 
                   {/* Clean Non-Intrusive Tooltip on Hover */}
-                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-stone-900/95 backdrop-blur-md text-white font-heading text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg z-50 border border-white/15 flex items-center gap-1">
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-stone-900/95 backdrop-blur-md text-white font-heading text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap opacity-100 transition-opacity pointer-events-none shadow-lg z-50 border border-white/15 flex items-center gap-1">
                     {isTopRecommended && <span className="text-amber-400 font-bold">🥇</span>}
-                    <span>{place.name}</span>
+                    <span>{activeSelectedPlace.name}</span>
                     {isVisited ? (
                       <span className="text-emerald-400 font-bold">✓ Đã ghé</span>
-                    ) : place.rating ? (
-                      <span className="text-amber-400 font-medium">★ {place.rating}</span>
+                    ) : activeSelectedPlace.rating ? (
+                      <span className="text-amber-400 font-medium">★ {activeSelectedPlace.rating}</span>
                     ) : null}
                   </div>
                 </div>
               </Marker>
             );
-          })}
+          })()}
         </MapGL>
       </div>
 

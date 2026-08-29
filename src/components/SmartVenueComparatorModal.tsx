@@ -39,11 +39,43 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
 }) => {
   // Target hour and day type for smart traffic calculation
   const currentRealHour = new Date().getHours();
-  const [selectedHour, setSelectedHour] = useState<number>(
-    currentRealHour >= 18 && currentRealHour <= 20 ? currentRealHour : 19
-  );
+  const initialHour = currentRealHour >= 18 && currentRealHour <= 20 ? currentRealHour : 19;
+
+  // Step 1: Split State - Immediate UI state for instantaneous slider movement (60 FPS)
+  const [uiSelectedHour, setUiSelectedHour] = useState<number>(initialHour);
+  // Engine State - Debounced hour for heavy traffic comparison matrix & weather calculations
+  const [debouncedHour, setDebouncedHour] = useState<number>(initialHour);
+  const debounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [selectedDayType, setSelectedDayType] = useState<DayType>('weekday');
   const [activeTab, setActiveTab] = useState<'matrix' | 'traffic' | 'ai_verdict'>('matrix');
+
+  // Debounce slider updates to eliminate lag during dragging
+  const handleSliderChange = (newHour: number) => {
+    setUiSelectedHour(newHour);
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedHour(newHour);
+    }, 250);
+  };
+
+  const handleCommitHour = (hour: number) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    setUiSelectedHour(hour);
+    setDebouncedHour(hour);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   // Selected venues to compare (2 or 3)
   const [comparedVenues, setComparedVenues] = useState<(Place | UnifiedPlace)[]>(() => {
@@ -70,29 +102,29 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
   const [searchPickerQuery, setSearchPickerQuery] = useState('');
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
-  // Compute traffic analysis for all compared venues
+  // Compute traffic analysis for all compared venues (Memoized with debouncedHour)
   const comparedTrafficResults = useMemo(() => {
     if (!comparedVenues.length || !userLocation) return [];
     return analyzeTrafficRoutes({
       userLocation,
-      targetHour: selectedHour,
+      targetHour: debouncedHour,
       dayType: selectedDayType,
       places: comparedVenues as Place[],
       weatherForecasts,
     });
-  }, [comparedVenues, userLocation, selectedHour, selectedDayType, weatherForecasts]);
+  }, [comparedVenues, userLocation, debouncedHour, selectedDayType, weatherForecasts]);
 
-  // Weather at selected hour
+  // Weather at selected hour (Memoized with debouncedHour)
   const hourlyWeather = useMemo(() => {
-    if (weatherForecasts && weatherForecasts.length > selectedHour) {
-      return weatherForecasts[selectedHour];
+    if (weatherForecasts && weatherForecasts.length > debouncedHour) {
+      return weatherForecasts[debouncedHour];
     }
-    return getSyntheticHourlyWeather()[selectedHour] || getSyntheticHourlyWeather()[19];
-  }, [weatherForecasts, selectedHour]);
+    return getSyntheticHourlyWeather()[debouncedHour] || getSyntheticHourlyWeather()[19];
+  }, [weatherForecasts, debouncedHour]);
 
   const congestionFactor = useMemo(() => {
-    return getHourCongestionFactor(selectedHour, selectedDayType);
-  }, [selectedHour, selectedDayType]);
+    return getHourCongestionFactor(debouncedHour, selectedDayType);
+  }, [debouncedHour, selectedDayType]);
 
   // Handle removing a venue from comparison
   const handleRemoveVenue = (venueId: string) => {
@@ -165,7 +197,7 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
 
     if (hourlyWeather.isRainy && safestWeather.place.id !== fastest.place.id) {
       bestPick = safestWeather;
-      reason = `Vì thời tiết lúc ${selectedHour}:00 có mưa (${hourlyWeather.conditionLabel}), tuyến đến ${bestPick.place.name} an toàn nhất, đường khô ráo và chỗ đỗ xe có mái che.`;
+      reason = `Vì thời tiết lúc ${debouncedHour}:00 có mưa (${hourlyWeather.conditionLabel}), tuyến đến ${bestPick.place.name} an toàn nhất, đường khô ráo và chỗ đỗ xe có mái che.`;
     } else if (fastest.trafficScore >= 75) {
       bestPick = fastest;
       reason = `Tuyến đến ${bestPick.place.name} là tối ưu nhất với thời gian đi chỉ ~${bestPick.estimatedDurationMinutes} phút, đường rất thông thoáng và né được các nút giao hay ùn ứ.`;
@@ -185,9 +217,9 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
       highestRatedVenue: highestRated,
       safestWeatherVenue: safestWeather,
       reason,
-      detailedSummary: `Lúc ${selectedHour}:00 (${congestionFactor.description}), lựa chọn phù hợp nhất là "${bestPick.place.name}" để vừa thưởng thức trọn vẹn món ngon, vừa tối ưu thời gian di chuyển mà không lo kẹt xe.`,
+      detailedSummary: `Lúc ${debouncedHour}:00 (${congestionFactor.description}), lựa chọn phù hợp nhất là "${bestPick.place.name}" để vừa thưởng thức trọn vẹn món ngon, vừa tối ưu thời gian di chuyển mà không lo kẹt xe.`,
     };
-  }, [comparedTrafficResults, hourlyWeather, selectedHour, congestionFactor]);
+  }, [comparedTrafficResults, hourlyWeather, debouncedHour, congestionFactor]);
 
   if (!isOpen) return null;
 
@@ -237,15 +269,18 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
             <div className="flex items-center gap-1 bg-[#FAF9F5] px-2.5 py-1 rounded-xl border border-stone-200">
               <span className="text-xs">⏰</span>
               <span className="text-xs font-bold text-stone-800">
-                Giờ đi: <span className="text-[#FF6B35] font-black">{selectedHour}:00</span>
+                Giờ đi: <span className="text-[#FF6B35] font-black">{uiSelectedHour}:00</span>
               </span>
               <input
                 type="range"
                 min={0}
                 max={23}
                 step={1}
-                value={selectedHour}
-                onChange={(e) => setSelectedHour(Number(e.target.value))}
+                value={uiSelectedHour}
+                onChange={(e) => handleSliderChange(Number(e.target.value))}
+                onPointerUp={(e) => handleCommitHour(Number((e.target as HTMLInputElement).value))}
+                onTouchEnd={(e) => handleCommitHour(Number((e.target as HTMLInputElement).value))}
+                onMouseUp={(e) => handleCommitHour(Number((e.target as HTMLInputElement).value))}
                 className="w-20 sm:w-28 h-1.5 bg-stone-300 rounded-lg appearance-none cursor-pointer accent-[#FF6B35] ml-1.5"
               />
             </div>
@@ -470,7 +505,7 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-bold text-stone-700">
-                            ⏱️ Thời gian đi lúc {selectedHour}:00:
+                            ⏱️ Thời gian đi lúc {debouncedHour}:00:
                           </span>
                           <span
                             className={`font-heading font-black text-sm ${
@@ -591,7 +626,7 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
                     <span className="text-xl">🚦</span>
                     <div>
                       <h4 className="font-heading font-bold text-sm text-white">
-                        Dự báo giao thông lúc {selectedHour}:00 ({selectedDayType === 'weekday' ? 'Ngày thường' : selectedDayType === 'weekend' ? 'Cuối tuần' : 'Ngày lễ'})
+                        Dự báo giao thông lúc {debouncedHour}:00 ({selectedDayType === 'weekday' ? 'Ngày thường' : selectedDayType === 'weekend' ? 'Cuối tuần' : 'Ngày lễ'})
                       </h4>
                       <p className="text-[11.5px] text-emerald-200">{congestionFactor.description}</p>
                     </div>
@@ -786,7 +821,7 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
         {/* 5. Footer */}
         <div className="p-3.5 bg-[#FAF9F5] border-t border-stone-200 flex items-center justify-between shrink-0">
           <span className="text-xs text-stone-500">
-            Đang so sánh <strong>{comparedVenues.length} quán</strong> lúc <strong>{selectedHour}:00</strong>
+            Đang so sánh <strong>{comparedVenues.length} quán</strong> lúc <strong>{debouncedHour}:00</strong>
           </span>
           <button
             type="button"

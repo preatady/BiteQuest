@@ -38,15 +38,48 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
 }) => {
   // Current real-world hour as initial default
   const currentRealHour = new Date().getHours();
-  const [selectedHour, setSelectedHour] = useState<number>(
-    currentRealHour >= 18 && currentRealHour <= 20 ? currentRealHour : 20
-  );
+  const initialHour = currentRealHour >= 18 && currentRealHour <= 20 ? currentRealHour : 20;
+
+  // Step 1: Split State - Immediate UI state for instantaneous slider movement (60 FPS)
+  const [uiSelectedHour, setUiSelectedHour] = useState<number>(initialHour);
+  // Engine State - Debounced hour that triggers heavy routing/flood/weather calculations
+  const [debouncedHour, setDebouncedHour] = useState<number>(initialHour);
+  const debounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [selectedDayType, setSelectedDayType] = useState<DayType>('weekday');
   const [filterLevel, setFilterLevel] = useState<'all' | 'smooth' | 'dry_safe' | 'near'>('all');
   const [weatherForecasts, setWeatherForecasts] = useState<HourlyWeatherForecast[]>(() =>
     getSyntheticHourlyWeather()
   );
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
+
+  // Debounce the slider change to prevent UI freezing during drag
+  const handleSliderChange = (newHour: number) => {
+    setUiSelectedHour(newHour);
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedHour(newHour);
+    }, 250);
+  };
+
+  // Immediate commit on mouse up / touch end / quick button click
+  const handleCommitHour = (hour: number) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    setUiSelectedHour(hour);
+    setDebouncedHour(hour);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fetch official live weather forecast
   useEffect(() => {
@@ -71,26 +104,26 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
     };
   }, [userLocation?.latitude, userLocation?.longitude]);
 
-  // Current selected hour weather
+  // Current selected hour weather (Memoized with debouncedHour)
   const currentHourWeather = useMemo(() => {
-    return weatherForecasts[selectedHour] || weatherForecasts[20] || getSyntheticHourlyWeather()[20];
-  }, [weatherForecasts, selectedHour]);
+    return weatherForecasts[debouncedHour] || weatherForecasts[20] || getSyntheticHourlyWeather()[20];
+  }, [weatherForecasts, debouncedHour]);
 
-  // Compute traffic & flood analysis
+  // Compute traffic & flood analysis (Memoized with debouncedHour to avoid running 50 times during drag)
   const trafficResults = useMemo(() => {
     return analyzeTrafficRoutes({
       userLocation,
-      targetHour: selectedHour,
+      targetHour: debouncedHour,
       dayType: selectedDayType,
       places,
       weatherForecasts,
     });
-  }, [userLocation, selectedHour, selectedDayType, places, weatherForecasts]);
+  }, [userLocation, debouncedHour, selectedDayType, places, weatherForecasts]);
 
   // Congestion forecast overview
   const congestionInfo = useMemo(() => {
-    return getHourCongestionFactor(selectedHour, selectedDayType);
-  }, [selectedHour, selectedDayType]);
+    return getHourCongestionFactor(debouncedHour, selectedDayType);
+  }, [debouncedHour, selectedDayType]);
 
   // Filtered list
   const displayResults = useMemo(() => {
@@ -203,7 +236,7 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-[#594139]">
-                ⏰ Khung giờ muốn đi: <span className="text-[#FF6B35] font-black">{selectedHour}:00</span>
+                ⏰ Khung giờ muốn đi: <span className="text-[#FF6B35] font-black">{uiSelectedHour}:00</span>
               </span>
               <span className="text-[10px] text-[#8D7168]">
                 Kéo thanh trượt để xem giờ khác
@@ -217,9 +250,9 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
                   <button
                     key={qh.label}
                     type="button"
-                    onClick={() => setSelectedHour(qh.hour)}
+                    onClick={() => handleCommitHour(qh.hour)}
                     className={`px-2.5 py-1.5 rounded-xl text-[11px] font-medium border flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-                      selectedHour === qh.hour
+                      uiSelectedHour === qh.hour
                         ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs font-bold scale-102'
                         : 'bg-[#FAF9F5] border-[#2D2926]/10 text-[#594139] hover:bg-stone-100'
                     }`}
@@ -228,7 +261,7 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
                     <span>{qh.label}</span>
                     {hourW && (
                       <span className={`text-[10px] px-1 py-0.2 rounded font-normal ${
-                        selectedHour === qh.hour ? 'bg-emerald-700 text-emerald-100' : 'bg-stone-200/70 text-stone-600'
+                        uiSelectedHour === qh.hour ? 'bg-emerald-700 text-emerald-100' : 'bg-stone-200/70 text-stone-600'
                       }`}>
                         {hourW.conditionIcon} {hourW.temperatureC}°
                       </span>
@@ -246,8 +279,11 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
                 min={0}
                 max={23}
                 step={1}
-                value={selectedHour}
-                onChange={(e) => setSelectedHour(Number(e.target.value))}
+                value={uiSelectedHour}
+                onChange={(e) => handleSliderChange(Number(e.target.value))}
+                onPointerUp={(e) => handleCommitHour(Number((e.target as HTMLInputElement).value))}
+                onTouchEnd={(e) => handleCommitHour(Number((e.target as HTMLInputElement).value))}
+                onMouseUp={(e) => handleCommitHour(Number((e.target as HTMLInputElement).value))}
                 className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
               />
               <span className="text-[10px] text-stone-400 font-mono">23:00</span>
@@ -274,7 +310,7 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-1.5">
                     <strong className="text-xs font-bold text-stone-900 truncate">
-                      Lúc {selectedHour}:00: {currentHourWeather.conditionLabel}
+                      Lúc {debouncedHour}:00: {currentHourWeather.conditionLabel}
                     </strong>
                     <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-white/90 border border-stone-200 text-stone-700 shrink-0">
                       {currentHourWeather.temperatureC}°C
@@ -301,7 +337,7 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
 
             {/* Weather + Traffic Advice text */}
             <div className="text-[11px] text-stone-700 bg-white/80 p-1.5 rounded-xl border border-stone-200/60 leading-tight">
-              💡 <strong>Lời khuyên lúc {selectedHour}:00:</strong> {currentHourWeather.advice}
+              💡 <strong>Lời khuyên lúc {debouncedHour}:00:</strong> {currentHourWeather.advice}
             </div>
           </div>
 
@@ -515,7 +551,7 @@ export const TrafficSmartNavigatorSheet: React.FC<TrafficSmartNavigatorSheetProp
             </button>
           ) : (
             <span className="text-[11px] text-[#8D7168]">
-              Đã phân tích lúc <strong className="text-[#2D2926]">{selectedHour}:00 ({currentHourWeather.conditionLabel})</strong>
+              Đã phân tích lúc <strong className="text-[#2D2926]">{debouncedHour}:00 ({currentHourWeather.conditionLabel})</strong>
             </span>
           )}
           <button
