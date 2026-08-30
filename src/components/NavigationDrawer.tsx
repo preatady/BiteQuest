@@ -1,5 +1,7 @@
 import React from 'react';
 import { User, TabType } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { LanguageToggle } from './LanguageToggle';
 
 interface NavigationDrawerProps {
   isOpen: boolean;
@@ -34,6 +36,8 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   isLoggedIn = false,
   isSigningIn = false,
 }) => {
+  const { t, isVi } = useLanguage();
+
   if (!isOpen) return null;
 
   const handleNavClick = (tab: TabType) => {
@@ -47,7 +51,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
       id="navigation-drawer-root"
       role="dialog"
       aria-modal="true"
-      aria-label="Menu điều hướng chính"
+      aria-label={isVi ? 'Menu điều hướng chính' : 'Main navigation menu'}
     >
       {/* Backdrop */}
       <div
@@ -75,7 +79,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               type="button"
               onClick={onClose}
               className="w-10 h-10 rounded-full bg-[#F4F4F0] hover:bg-[#EAE9E4] text-[#2D2926] flex items-center justify-center active:scale-95 transition-all focus:outline-none"
-              aria-label="Đóng menu điều hướng"
+              aria-label={t('close')}
               id="btn-close-drawer"
             >
               <span className="material-symbols-outlined text-[20px]">close</span>
@@ -113,16 +117,16 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
           {/* XP Mini Bar */}
           <div className="px-5 mb-3 flex items-center justify-between text-[11px] font-heading text-[#594139]">
-            <span className="font-medium">Tiến độ cấp độ:</span>
+            <span className="font-medium">{isVi ? 'Tiến độ cấp độ:' : 'Rank Progress:'}</span>
             <span className="font-bold text-[#FF6B35]">
-              {user.xp} / {user.nextLevelXp} XP
+              {user.xp.toLocaleString(isVi ? 'vi-VN' : 'en-US')} / {user.nextLevelXp.toLocaleString(isVi ? 'vi-VN' : 'en-US')} XP
             </span>
           </div>
 
           {/* PRIMARY NAVIGATION LIST */}
           <div className="px-3 space-y-1">
             <span className="px-3 text-[10px] font-heading font-bold uppercase tracking-wider text-[#594139]/70">
-              Khám phá & Thử thách
+              {isVi ? 'Khám phá & Thử thách' : 'Discovery & Quests'}
             </span>
 
             {/* 1. Explore */}
@@ -137,7 +141,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               id="drawer-nav-explore"
             >
               <span className="material-symbols-outlined text-[20px]">explore</span>
-              <span className="flex-1">Bản Đồ Khám Phá</span>
+              <span className="flex-1">{isVi ? 'Bản Đồ Khám Phá' : 'Food Exploration Map'}</span>
               {activeTab === 'explore' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
             </button>
 
@@ -153,7 +157,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               id="drawer-nav-friends"
             >
               <span className="material-symbols-outlined text-[20px]">dynamic_feed</span>
-              <span className="flex-1">Bản Tin Bạn Bè</span>
+              <span className="flex-1">{isVi ? 'Bản Tin Bạn Bè & Cộng Đồng' : 'Community & Food Feed'}</span>
               {activeTab === 'friends' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
             </button>
 
@@ -169,7 +173,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               id="drawer-nav-radar"
             >
               <span className="material-symbols-outlined text-[20px]">radar</span>
-              <span className="flex-1">Radar Gợi Ý Ẩm Thực</span>
+              <span className="flex-1">{isVi ? 'Radar Gợi Ý Ẩm Thực' : 'Culinary Food Radar'}</span>
               {activeTab === 'radar' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
             </button>
 
@@ -185,7 +189,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               id="drawer-nav-camera"
             >
               <span className="material-symbols-outlined text-[20px]">photo_camera</span>
-              <span className="flex-1">Chụp & Xác Minh Bite</span>
+              <span className="flex-1">{isVi ? 'Chụp & Xác Minh Món Ngon' : 'Snap & Verify Bites'}</span>
               {activeTab === 'camera' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
             </button>
 
@@ -201,7 +205,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               id="drawer-nav-passport"
             >
               <span className="material-symbols-outlined text-[20px]">style</span>
-              <span className="flex-1">Hành Trình Ẩm Thực</span>
+              <span className="flex-1">{isVi ? 'Hành Trình Ẩm Thực' : 'Culinary Passport'}</span>
               {activeTab === 'passport' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
             </button>
 
@@ -217,7 +221,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               id="drawer-nav-profile"
             >
               <span className="material-symbols-outlined text-[20px]">person</span>
-              <span className="flex-1">Hồ Sơ & Danh Hiệu</span>
+              <span className="flex-1">{isVi ? 'Hồ Sơ & Danh Hiệu' : 'Profile & Badges'}</span>
               {activeTab === 'profile' && <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B35]" />}
             </button>
 
@@ -233,9 +237,9 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                 id="drawer-nav-leaderboard"
               >
                 <span className="text-base">🏆</span>
-                <span className="flex-1 font-bold text-amber-700">Bảng Xếp Hạng Đua Top</span>
+                <span className="flex-1 font-bold text-amber-700">{isVi ? 'Bảng Xếp Hạng Đua Top' : 'Foodie Leaderboard'}</span>
                 <span className="bg-amber-400/20 text-amber-900 text-[9px] font-heading font-black px-1.5 py-0.5 rounded-full">
-                  MÙA 1 🔥
+                  {isVi ? 'MÙA 1 🔥' : 'SEASON 1 🔥'}
                 </span>
               </button>
             )}
@@ -252,7 +256,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                 id="drawer-nav-bitebot"
               >
                 <span className="text-base">✨</span>
-                <span className="flex-1 font-bold text-[#FF6B35]">BiteBot - Trợ lý AI</span>
+                <span className="flex-1 font-bold text-[#FF6B35]">{isVi ? 'BiteBot - Trợ lý AI' : 'BiteBot - AI Foodie Assistant'}</span>
                 <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.5 rounded-full">
                   Gemini 3.7
                 </span>
@@ -263,10 +267,19 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
           {/* DIVIDER */}
           <div className="my-3 mx-4 border-t border-[#2D2926]/5" />
 
+          {/* LANGUAGE SETTING SELECTOR */}
+          <div className="px-4 mb-3 space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] font-heading font-bold uppercase tracking-wider text-[#594139]/70">
+              <span>{t('languageSettingTitle')}</span>
+              <span className="text-[#FF6B35]">{isVi ? 'VI / EN' : 'EN / VI'}</span>
+            </div>
+            <LanguageToggle variant="full" />
+          </div>
+
           {/* SECONDARY SECTION */}
           <div className="px-3 space-y-1">
             <span className="px-3 text-[10px] font-heading font-bold uppercase tracking-wider text-[#594139]/70">
-              Thông tin & Trợ giúp
+              {isVi ? 'Thông tin & Trợ giúp' : 'Info & Help'}
             </span>
 
             {/* Về BiteQuest */}
@@ -280,7 +293,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               id="drawer-nav-about"
             >
               <span className="material-symbols-outlined text-[20px] text-[#FF6B35]">info</span>
-              <span className="flex-1">Về BiteQuest</span>
+              <span className="flex-1">{isVi ? 'Về BiteQuest' : 'About BiteQuest'}</span>
             </button>
 
             {/* Judge / Developer Info */}
@@ -316,7 +329,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                   className="w-full py-2.5 px-3 bg-[#FF6B35]/15 hover:bg-[#FF6B35]/25 text-[#FF6B35] rounded-xl font-heading text-xs font-bold flex items-center justify-center gap-2 active:scale-98 transition-all"
                 >
                   <span className="material-symbols-outlined text-[16px]">upgrade</span>
-                  <span>Nâng cấp tài khoản</span>
+                  <span>{isVi ? 'Nâng cấp tài khoản' : 'Upgrade Account'}</span>
                 </button>
               )}
               <button
@@ -325,7 +338,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                 className="w-full py-2.5 px-3 bg-[#F4F4F0] hover:bg-[#EAE9E4] text-[#594139] rounded-xl font-heading text-xs font-semibold flex items-center justify-center gap-2 active:scale-98 transition-all"
               >
                 <span className="material-symbols-outlined text-[18px]">logout</span>
-                <span>Đăng xuất tài khoản</span>
+                <span>{t('logOut')}</span>
               </button>
             </div>
           ) : (
@@ -347,22 +360,23 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               {isSigningIn ? (
                 <>
                   <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
-                  <span>Đang kết nối...</span>
+                  <span>{isVi ? 'Đang kết nối...' : 'Connecting...'}</span>
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-[18px]">login</span>
-                  <span>Đăng nhập / Đăng ký</span>
+                  <span>{isVi ? 'Đăng nhập / Đăng ký' : 'Sign In / Sign Up'}</span>
                 </>
               )}
             </button>
           )}
 
           <div className="mt-3 text-center text-[10px] text-[#594139]/60 font-heading">
-            <span>BiteQuest v1.2.0 · Hà Nội Edition 🍜</span>
+            <span>BiteQuest v1.2.0 · {isVi ? 'Hà Nội Edition 🍜' : 'Hanoi & Vietnam Edition 🍜'}</span>
           </div>
         </div>
       </div>
     </div>
   );
 };
+

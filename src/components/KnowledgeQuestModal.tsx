@@ -7,6 +7,7 @@ import {
   META_KNOWLEDGE_TITLE,
 } from '../data/knowledgeQuestions';
 import { User } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 
 interface KnowledgeQuestModalProps {
   trackId: KnowledgeTrackId;
@@ -28,6 +29,7 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
   onClose,
   onCompleteTrack,
 }) => {
+  const { isVi } = useLanguage();
   const trackInfo = KNOWLEDGE_TRACKS[trackId];
   const [questions, setQuestions] = useState<KnowledgeQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -149,7 +151,7 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
                   {trackInfo.badgeName}
                 </span>
                 <h3 className="font-heading text-base font-black text-[#2D2926] leading-tight">
-                  {trackInfo.titleVi}
+                  {isVi ? trackInfo.titleVi : (trackId === 'smart_biter' ? 'Smart Biter & Price Clarity' : 'Responsible Food Explorer')}
                 </h3>
               </div>
             </div>
@@ -157,7 +159,7 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-full bg-[#F4F4F0] hover:bg-[#E9E8E4] text-[#594139] flex items-center justify-center text-sm font-bold active:scale-95 transition-transform"
-              title="Đóng"
+              title={isVi ? 'Đóng' : 'Close'}
             >
               ✕
             </button>
@@ -167,10 +169,10 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
             <div className="flex flex-col gap-1.5 mt-1">
               <div className="flex justify-between items-center text-[11px] font-heading font-bold text-[#594139]">
                 <span className="inline-flex items-center gap-1 bg-[#2EC4B6]/15 text-[#006A62] px-2 py-0.5 rounded-full text-[10px]">
-                  💡 {currentQuestion.contextPill || 'Tình huống thực tế'}
+                  💡 {currentQuestion.contextPill || (isVi ? 'Tình huống thực tế' : 'Real Scenario')}
                 </span>
                 <span>
-                  Câu hỏi <strong className="text-[#FF6B35]">{currentIndex + 1}</strong> / {totalQuestions}
+                  {isVi ? 'Câu hỏi ' : 'Question '}<strong className="text-[#FF6B35]">{currentIndex + 1}</strong> / {totalQuestions}
                 </span>
               </div>
 
@@ -262,12 +264,12 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
                     {selectedChoiceId === currentQuestion.correctChoiceId ? (
                       <>
                         <span className="text-base">✓</span>
-                        <span className="text-[#006A62]">Chính xác! +1 Smart Move</span>
+                        <span className="text-[#006A62]">{isVi ? 'Chính xác! +1 Smart Move' : 'Correct! +1 Smart Move'}</span>
                       </>
                     ) : (
                       <>
                         <span className="text-base">💡</span>
-                        <span className="text-[#2D2926]">Ghi nhớ nhanh:</span>
+                        <span className="text-[#2D2926]">{isVi ? 'Ghi nhớ nhanh:' : 'Quick takeaway:'}</span>
                       </>
                     )}
                   </div>
@@ -288,34 +290,38 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
                       <span className="text-5xl">{trackInfo.badgeEmoji}</span>
                     </div>
                     <div className="absolute -bottom-1 -right-1 bg-[#2EC4B6] text-white text-xs px-2 py-0.5 rounded-full font-heading font-bold shadow">
-                      ✓ Đạt
+                      {isVi ? '✓ Đạt' : '✓ Passed'}
                     </div>
                   </div>
 
                   <div>
                     <span className="inline-block bg-[#2EC4B6]/15 text-[#006A62] px-3 py-1 rounded-full text-[11px] font-heading font-extrabold uppercase tracking-wide mb-1.5">
-                      Đã mở khóa Huy hiệu Kỹ Năng
+                      {isVi ? 'Đã mở khóa Huy hiệu Kỹ Năng' : 'Unlocked Skill Badge'}
                     </span>
                     <h3 className="font-heading text-2xl font-black text-[#2D2926]">
-                      {trackInfo.titleVi}
+                      {isVi ? trackInfo.titleVi : (trackId === 'smart_biter' ? 'Smart Biter & Price Clarity' : 'Responsible Food Explorer')}
                     </h3>
                     <p className="text-xs text-[#594139] mt-1 max-w-xs mx-auto">
-                      Bạn đã hoàn thành xuất sắc <strong>{correctCount} / {totalQuestions}</strong> câu hỏi tình huống thực tế!
+                      {isVi ? (
+                        <>Bạn đã hoàn thành xuất sắc <strong>{correctCount} / {totalQuestions}</strong> câu hỏi tình huống thực tế!</>
+                      ) : (
+                        <>You successfully passed <strong>{correctCount} / {totalQuestions}</strong> real-world questions!</>
+                      )}
                     </p>
                   </div>
 
                   {/* Rewards Breakdown Box */}
                   <div className="w-full bg-white rounded-2xl p-4 border border-[#2D2926]/10 text-left flex flex-col gap-2.5 shadow-sm">
                     <span className="text-[11px] font-heading font-bold text-[#594139] uppercase tracking-wider">
-                      Phần thưởng mở khóa:
+                      {isVi ? 'Phần thưởng mở khóa:' : 'Unlocked Rewards:'}
                     </span>
 
                     <div className="flex items-center justify-between text-xs font-heading font-semibold text-[#2D2926]">
                       <span className="flex items-center gap-2">
                         <span>🛡️</span>
-                        <span>Huy hiệu {trackInfo.badgeName}</span>
+                        <span>{isVi ? `Huy hiệu ${trackInfo.badgeName}` : `${trackInfo.badgeName} Badge`}</span>
                       </span>
-                      <span className="text-[#2EC4B6] font-bold">✓ Trang cá nhân</span>
+                      <span className="text-[#2EC4B6] font-bold">{isVi ? '✓ Trang cá nhân' : '✓ Profile badge'}</span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs font-heading font-semibold text-[#2D2926]">
@@ -323,16 +329,16 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
                         <span>📸</span>
                         <span>Sticker Camera Bite {trackInfo.badgeEmoji}</span>
                       </span>
-                      <span className="text-[#2EC4B6] font-bold">✓ Mở khóa</span>
+                      <span className="text-[#2EC4B6] font-bold">{isVi ? '✓ Mở khóa' : '✓ Unlocked'}</span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs font-heading font-semibold text-[#2D2926]">
                       <span className="flex items-center gap-2">
                         <span>⚡</span>
-                        <span>Điểm kinh nghiệm EXP</span>
+                        <span>{isVi ? 'Điểm kinh nghiệm EXP' : 'EXP Experience'}</span>
                       </span>
                       <span className="text-[#FF6B35] font-bold">
-                        {alreadyClaimedReward ? 'Đã nhận trước đó' : `+${trackInfo.rewardXp} XP`}
+                        {alreadyClaimedReward ? (isVi ? 'Đã nhận trước đó' : 'Already claimed') : `+${trackInfo.rewardXp} XP`}
                       </span>
                     </div>
 
@@ -340,10 +346,10 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
                       <div className="pt-2 border-t border-[#2D2926]/5 flex items-center justify-between text-xs font-heading font-bold text-[#FF6B35]">
                         <span className="flex items-center gap-1.5">
                           <span>🏆</span>
-                          <span>Danh hiệu: {META_KNOWLEDGE_TITLE}</span>
+                          <span>{isVi ? `Danh hiệu: ${META_KNOWLEDGE_TITLE}` : `Title: ${META_KNOWLEDGE_TITLE}`}</span>
                         </span>
                         <span className="bg-[#FF6B35]/15 text-[#FF6B35] px-2 py-0.5 rounded-full text-[10px]">
-                          Cả 2 tracks!
+                          {isVi ? 'Cả 2 tracks!' : 'Both tracks!'}
                         </span>
                       </div>
                     )}
@@ -358,19 +364,25 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
 
                   <div>
                     <h3 className="font-heading text-xl font-black text-[#2D2926]">
-                      Gần đạt rồi — thử lại nhé!
+                      {isVi ? 'Gần đạt rồi — thử lại nhé!' : 'Almost there — try again!'}
                     </h3>
                     <p className="text-xs text-[#594139] mt-1 max-w-xs mx-auto">
-                      Bạn đạt <strong>{correctCount} / {totalQuestions}</strong> câu đúng (cần tối thiểu 4/5 để mở khóa huy hiệu).
+                      {isVi ? (
+                        <>Bạn đạt <strong>{correctCount} / {totalQuestions}</strong> câu đúng (cần tối thiểu 4/5 để mở khóa huy hiệu).</>
+                      ) : (
+                        <>You got <strong>{correctCount} / {totalQuestions}</strong> correct (4/5 needed to unlock badge).</>
+                      )}
                     </p>
                   </div>
 
                   <div className="bg-white rounded-2xl p-4 border border-[#2D2926]/10 text-xs text-[#594139] text-left leading-relaxed w-full">
                     <p className="font-heading font-bold text-[#2D2926] mb-1">
-                      💡 Mẹo hữu ích:
+                      {isVi ? '💡 Mẹo hữu ích:' : '💡 Pro tip:'}
                     </p>
                     <p>
-                      Mỗi lần thử lại sẽ có các câu hỏi mới ngẫu nhiên. Hãy luôn ưu tiên hỏi giá trước, đối chiếu hóa đơn và kiểm chứng sự thật trước khi đưa ra nhận xét nhé!
+                      {isVi
+                        ? 'Mỗi lần thử lại sẽ có các câu hỏi mới ngẫu nhiên. Hãy luôn ưu tiên hỏi giá trước, đối chiếu hóa đơn và kiểm chứng sự thật trước khi đưa ra nhận xét nhé!'
+                        : 'Every retry pulls randomized questions. Always verify menu prices beforehand, cross-check receipts, and rely on authentic facts!'}
                     </p>
                   </div>
                 </>
@@ -391,7 +403,7 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
                 className="w-full bg-[#FF6B35] disabled:bg-[#E9E8E4] disabled:text-[#594139]/40 hover:bg-[#FF6B35]/90 text-white py-3.5 rounded-full font-heading text-xs font-bold shadow-md flex items-center justify-center gap-2 active:scale-98 transition-all"
                 id="btn-confirm-knowledge-answer"
               >
-                <span>Xác nhận câu trả lời</span>
+                <span>{isVi ? 'Xác nhận câu trả lời' : 'Confirm Answer'}</span>
                 <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
               </button>
             ) : (
@@ -400,7 +412,7 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
                 className="w-full bg-[#2EC4B6] hover:bg-[#2EC4B6]/90 text-white py-3.5 rounded-full font-heading text-xs font-bold shadow-md flex items-center justify-center gap-2 active:scale-98 transition-all"
                 id="btn-next-knowledge-question"
               >
-                <span>{currentIndex + 1 < totalQuestions ? 'Câu hỏi tiếp theo' : 'Xem kết quả'}</span>
+                <span>{currentIndex + 1 < totalQuestions ? (isVi ? 'Câu hỏi tiếp theo' : 'Next Question') : (isVi ? 'Xem kết quả' : 'View Results')}</span>
                 <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
               </button>
             )
@@ -410,7 +422,7 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
               className="w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white py-3.5 rounded-full font-heading text-xs font-bold shadow-lg shadow-[#FF6B35]/25 flex items-center justify-center gap-2 active:scale-98 transition-all"
               id="btn-claim-knowledge-badge"
             >
-              <span>Nhận Huy Hiệu & Hoàn Tất</span>
+              <span>{isVi ? 'Nhận Huy Hiệu & Hoàn Tất' : 'Claim Badge & Finish'}</span>
               <span className="material-symbols-outlined text-[16px]">verified</span>
             </button>
           ) : (
@@ -419,14 +431,14 @@ export const KnowledgeQuestModal: React.FC<KnowledgeQuestModalProps> = ({
                 onClick={onClose}
                 className="flex-1 bg-[#F4F4F0] hover:bg-[#E9E8E4] text-[#594139] py-3 rounded-full font-heading text-xs font-bold transition-all"
               >
-                Để sau
+                {isVi ? 'Để sau' : 'Later'}
               </button>
               <button
                 onClick={handleRetry}
                 className="flex-2 bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white py-3 rounded-full font-heading text-xs font-bold shadow flex items-center justify-center gap-1.5 active:scale-98 transition-all"
                 id="btn-retry-knowledge-quest"
               >
-                <span>Thử lại ngay</span>
+                <span>{isVi ? 'Thử lại ngay' : 'Retry Now'}</span>
                 <span className="material-symbols-outlined text-[16px]">refresh</span>
               </button>
             </div>

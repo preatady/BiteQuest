@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Place, QuickRatingTaste, QuickRatingPrice, FoodCategory } from '../types';
 import { auth } from '../firebase';
+import { useLanguage } from '../context/LanguageContext';
 import {
   Camera,
   RotateCw,
@@ -84,6 +85,8 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
   onCheckinSuccess,
   onOpenCommunitySpotModal,
 }) => {
+  const { t, isVi } = useLanguage();
+
   // 1. Permission and Camera lifecycle state machine
   const [cameraPermission, setCameraPermission] = useState<
     'requesting' | 'ready' | 'denied' | 'unavailable' | 'error'
@@ -480,11 +483,12 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
   };
 
   // Trigger background verification with raw original evidence
-  const triggerVerification = async (rawImage: string, isGallery: boolean) => {
+  const triggerVerification = async (rawImage: string, isGallery: boolean, candidatePlaceId?: string) => {
     setIsVerifying(true);
     setVerificationResult(null);
 
     try {
+      const targetPlaceId = candidatePlaceId || preselectedPlace?.id || selectedPlaceCandidate?.id;
       const token = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/verify-bite', {
         method: 'POST',
@@ -497,7 +501,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
           latitude: userCoords.lat,
           longitude: userCoords.lng,
           accuracy: userCoords.accuracy,
-          selectedPlaceId: preselectedPlace?.id,
+          selectedPlaceId: targetPlaceId,
           isGalleryUpload: isGallery,
         }),
       });
@@ -513,11 +517,11 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
       }
     } catch (err: any) {
       console.warn('Verification fallback:', err);
-      const fallbackPlace: Place = preselectedPlace || {
+      const fallbackPlace: Place = preselectedPlace || selectedPlaceCandidate || {
         id: 'place_bun_ca_co_lan',
         name: 'Bún Cá Cô Lan',
         category: 'noodles',
-        categoryLabel: 'Bún / Phở',
+        categoryLabel: isVi ? 'Bún / Phở' : 'Noodles',
         priceBand: '35k - 50k',
         priceMin: 35000,
         priceMax: 50000,
@@ -537,13 +541,15 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
         confidence: isGallery ? 0.65 : 0.90,
         matchedPlace: fallbackPlace,
         distanceMeters: 18,
-        formattedDistance: 'Cách bạn khoảng 18m',
-        statusMessage: isGallery ? '📸 Ảnh từ thư viện (Gallery Bite)' : '✨ Có vẻ đúng quán rồi',
+        formattedDistance: isVi ? 'Cách bạn khoảng 18m' : 'Around 18m away',
+        statusMessage: isGallery
+          ? (isVi ? '📸 Ảnh từ thư viện (Gallery Bite)' : '📸 Uploaded from Gallery')
+          : (isVi ? '✨ Có vẻ đúng quán rồi' : '✨ Looks like the right spot'),
         aiAnalysis: {
           foodCategory: 'noodles',
-          categoryLabel: 'Bún / Phở',
-          ambianceType: 'Quán vỉa hè',
-          dishName: 'Bún Cá Chiên Giòn',
+          categoryLabel: isVi ? 'Bún / Phở' : 'Noodles',
+          ambianceType: isVi ? 'Quán vỉa hè' : 'Street Food',
+          dishName: isVi ? 'Bún Cá Chiên Giòn' : 'Crispy Fried Fish Noodles',
           visiblePriceMin: 35000,
           visiblePriceMax: 50000,
         },
@@ -616,7 +622,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
     }
   };
 
-  // Mock / Sample Food Photo testing helper (when hardware webcam is busy or unavailable)
+  // Mock / Sample Food Photo testing helper (generates canvas snapshot reliably)
   const handleUseSamplePhoto = (sampleIdx = 0) => {
     const samples = [
       'https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=800&auto=format&fit=crop&q=80', // Bún cá
@@ -624,6 +630,26 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
       'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&auto=format&fit=crop&q=80', // Cà phê trứng
     ];
     const chosenUrl = samples[sampleIdx % samples.length];
+
+    // Helper to generate styled food fallback canvas
+    const createFallbackCanvasDataUrl = () => {
+      if (canvasRef.current) {
+        const canvas = canvasRef.current;
+        canvas.width = 800;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#FF6B35';
+          ctx.fillRect(0, 0, 800, 600);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 36px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('🍲 Bún Cá Chiên Giòn', 400, 300);
+          return canvas.toDataURL('image/jpeg', 0.88);
+        }
+      }
+      return chosenUrl;
+    };
 
     // Create a local canvas snapshot to get a reliable data URL
     const img = new Image();
@@ -635,30 +661,44 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
         canvas.height = 600;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0, 800, 600);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-          setOriginalEvidence(dataUrl);
-          setIsGalleryUpload(false);
-          setCaptureStep('review');
-          stopActiveStream();
-          triggerVerification(dataUrl, false);
-          return;
+          try {
+            ctx.drawImage(img, 0, 0, 800, 600);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+            setOriginalEvidence(dataUrl);
+            setIsGalleryUpload(false);
+            setCaptureStep('review');
+            stopActiveStream();
+            triggerVerification(dataUrl, false);
+            return;
+          } catch (e) {
+            // Tainted canvas fallback
+          }
         }
       }
-      setOriginalEvidence(chosenUrl);
+      const fallbackUrl = createFallbackCanvasDataUrl();
+      setOriginalEvidence(fallbackUrl);
       setIsGalleryUpload(false);
       setCaptureStep('review');
       stopActiveStream();
-      triggerVerification(chosenUrl, false);
+      triggerVerification(fallbackUrl, false);
     };
     img.onerror = () => {
-      setOriginalEvidence(chosenUrl);
+      const fallbackUrl = createFallbackCanvasDataUrl();
+      setOriginalEvidence(fallbackUrl);
       setIsGalleryUpload(false);
       setCaptureStep('review');
       stopActiveStream();
-      triggerVerification(chosenUrl, false);
+      triggerVerification(fallbackUrl, false);
     };
     img.src = chosenUrl;
+  };
+
+  // Switch place candidate and refresh verification session
+  const handleSelectCandidate = (candidate: Place) => {
+    setSelectedPlaceCandidate(candidate);
+    if (originalEvidence) {
+      triggerVerification(originalEvidence, isGalleryUpload, candidate.id);
+    }
   };
 
   // Retake / Reset to live camera
@@ -914,7 +954,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
             onClose?.();
           }}
           className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center text-white active:scale-95 transition-transform"
-          title="Đóng camera"
+          title={isVi ? 'Đóng camera' : 'Close camera'}
           id="btn-camera-close"
         >
           <X className="w-5 h-5" />
@@ -925,9 +965,9 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
           <MapPin className="w-3.5 h-3.5 text-[#FF6B35]" />
           <span className="font-heading text-xs font-bold text-white tracking-tight">
             {gpsStatus === 'locating'
-              ? 'Đang xác định vị trí...'
+              ? (isVi ? 'Đang xác định vị trí...' : 'Locating GPS...')
               : gpsStatus === 'denied'
-              ? 'Bật GPS để xác minh'
+              ? (isVi ? 'Bật GPS để xác minh' : 'Enable GPS to verify')
               : userCoords.district}
           </span>
         </div>
@@ -944,7 +984,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                 ? 'bg-black/40 text-white border-white/20'
                 : 'bg-black/20 text-white/30 border-white/10'
             }`}
-            title="Đèn Flash"
+            title={isVi ? 'Đèn Flash' : 'Flash'}
             id="btn-camera-flash"
           >
             {isFlashOn ? <Zap className="w-5 h-5 fill-current" /> : <ZapOff className="w-5 h-5" />}
@@ -963,7 +1003,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
             <div className="flex flex-col items-center gap-3">
               <div className="w-12 h-12 border-3 border-[#FF6B35] border-t-transparent rounded-full animate-spin" />
               <p className="font-heading text-sm font-semibold text-white/90">
-                Đang mở camera thực tế...
+                {isVi ? 'Đang mở camera thực tế...' : 'Initializing live camera...'}
               </p>
             </div>
           ) : (
@@ -974,18 +1014,17 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
 
               <div>
                 <h3 className="font-heading text-lg font-bold text-white mb-1">
-                  Không thể mở camera
+                  {isVi ? 'Không thể mở camera' : 'Cannot access camera'}
                 </h3>
                 <p className="text-xs text-white/70 leading-relaxed">
-                  {errorMessage || 'BiteQuest cần quyền camera để xác minh món ăn trực tiếp tại quán.'}
+                  {errorMessage || (isVi ? 'BiteQuest cần quyền camera để xác minh món ăn trực tiếp tại quán.' : 'BiteQuest needs camera permission to verify dishes on-site.')}
                 </p>
               </div>
 
               <div className="bg-black/40 rounded-2xl p-3 text-[11px] text-white/80 border border-white/10 w-full text-left flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-[#FFD166] flex-shrink-0 mt-0.5" />
                 <span>
-                  <strong>Hướng dẫn:</strong> Vào Cài đặt trình duyệt → Quyền riêng tư → Cho phép
-                  Camera cho BiteQuest.
+                  <strong>{isVi ? 'Hướng dẫn:' : 'Tip:'}</strong> {isVi ? 'Vào Cài đặt trình duyệt → Quyền riêng tư → Cho phép Camera cho BiteQuest.' : 'Browser Settings → Privacy → Allow Camera for BiteQuest.'}
                 </span>
               </div>
 
@@ -997,7 +1036,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                   id="btn-use-sample-dish"
                 >
                   <Sparkles className="w-4 h-4 text-[#FFD166]" />
-                  Dùng ảnh món mẫu thử nghiệm
+                  {t('cameraUseSample')}
                 </button>
 
                 <button
@@ -1007,7 +1046,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                   id="btn-fallback-gallery"
                 >
                   <ImageIcon className="w-4 h-4" />
-                  Chọn ảnh từ thư viện máy
+                  {t('cameraChooseGallery')}
                 </button>
 
                 <button
@@ -1017,7 +1056,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                   id="btn-retry-camera-permission"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  Thử kết nối lại camera
+                  {t('cameraRetryPermission')}
                 </button>
               </div>
             </div>
@@ -1045,7 +1084,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/25 flex items-center justify-center text-white active:scale-90 transition-transform shadow-lg"
-                title="Chọn từ thư viện"
+                title={isVi ? 'Chọn từ thư viện' : 'Upload from gallery'}
                 id="btn-gallery-upload"
               >
                 <ImageIcon className="w-5 h-5" />
@@ -1066,7 +1105,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
               <button
                 onClick={handleFlipCamera}
                 className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/25 flex items-center justify-center text-white active:scale-90 transition-transform shadow-lg"
-                title="Đổi camera trước/sau"
+                title={isVi ? 'Đổi camera trước/sau' : 'Flip camera'}
                 id="btn-flip-camera"
               >
                 <RotateCw className="w-5 h-5" />
@@ -1089,7 +1128,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
               id="btn-retake-bite"
             >
               <ArrowLeft className="w-4 h-4" />
-              Chụp lại
+              {t('cameraRetake')}
             </button>
 
             {/* Filter & Sticker Toolbar Buttons */}
@@ -1106,7 +1145,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                 id="btn-toggle-filters"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                Filter
+                {t('cameraFilter')}
               </button>
 
               <button
@@ -1121,7 +1160,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                 id="btn-toggle-stickers"
               >
                 <Tag className="w-3.5 h-3.5" />
-                Sticker
+                {t('cameraSticker')}
               </button>
             </div>
           </div>
@@ -1157,7 +1196,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                     : 'bg-white/15 text-white'
                 }`}
               >
-                ✕ Không sticker
+                ✕ {isVi ? 'Không sticker' : 'No sticker'}
               </button>
               {stickers.map((stk) => (
                 <button
@@ -1184,10 +1223,10 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
               <div className="py-6 flex flex-col items-center gap-3 text-center">
                 <div className="w-8 h-8 border-3 border-[#FF6B35] border-t-transparent rounded-full animate-spin" />
                 <p className="font-heading text-sm font-bold text-[#2D2926]">
-                  Gemini & GPS đang xác minh quán...
+                  {t('cameraVerifyingAI')}
                 </p>
                 <span className="text-xs text-[#594139]/70">
-                  Đối chiếu toạ độ thực tế và nhận diện hình ảnh
+                  {t('cameraVerifyingSubtext')}
                 </span>
               </div>
             ) : (
@@ -1195,7 +1234,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                 {/* Status banner */}
                 <div className="flex items-center justify-between">
                   <span className="font-heading text-sm font-bold text-[#2D2926]">
-                    {verificationResult?.statusMessage || '✨ Có vẻ đúng quán rồi 👀'}
+                    {verificationResult?.statusMessage || (isVi ? '✨ Có vẻ đúng quán rồi 👀' : '✨ Looks like the right spot 👀')}
                   </span>
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-[11px] font-heading font-bold ${
@@ -1225,7 +1264,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                     </div>
 
                     <span className="bg-white px-2 py-0.5 rounded-full text-[11px] font-heading font-bold text-[#594139] border border-[#E1BFB5]/40 shadow-xs whitespace-nowrap">
-                      {verificationResult?.formattedDistance || 'Cách 18m'}
+                      {verificationResult?.formattedDistance || (isVi ? 'Cách 18m' : '18m away')}
                     </span>
                   </div>
 
@@ -1238,10 +1277,10 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                         </span>
                       )}
                       <span className="bg-white text-[#2D2926] px-2 py-0.5 rounded-md text-[11px] font-medium border border-[#E9E8E4]">
-                        🏷️ {verificationResult.aiAnalysis.categoryLabel || 'Bún / Phở'}
+                        🏷️ {verificationResult.aiAnalysis.categoryLabel || (isVi ? 'Bún / Phở' : 'Noodles')}
                       </span>
                       <span className="bg-white text-[#2D2926] px-2 py-0.5 rounded-md text-[11px] font-medium border border-[#E9E8E4]">
-                        🏪 {verificationResult.aiAnalysis.ambianceType || 'Quán ăn'}
+                        🏪 {verificationResult.aiAnalysis.ambianceType || (isVi ? 'Quán ăn' : 'Eatery')}
                       </span>
                     </div>
                   )}
@@ -1251,12 +1290,12 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                 {verificationResult?.candidates && verificationResult.candidates.length > 1 && (
                   <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
                     <span className="text-[11px] text-[#594139]/70 font-heading font-semibold whitespace-nowrap">
-                      Hoặc chọn:
+                      {t('cameraOrChoose')}:
                     </span>
                     {verificationResult.candidates.map((c: any) => (
                       <button
                         key={c.id}
-                        onClick={() => setSelectedPlaceCandidate(c)}
+                        onClick={() => handleSelectCandidate(c)}
                         className={`px-2.5 py-1 rounded-full text-[11px] font-heading font-medium whitespace-nowrap transition-all border ${
                           selectedPlaceCandidate?.id === c.id
                             ? 'bg-[#FF6B35] text-white border-[#FF6B35] font-bold'
@@ -1273,10 +1312,10 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                 <div className="flex flex-col gap-2 pt-1">
                   <button
                     onClick={() => setShowQuickReviewModal(true)}
-                    className="w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white font-heading text-sm font-bold py-3 rounded-full shadow-lg shadow-[#FF6B35]/30 active:scale-98 transition-transform"
+                    className="w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white font-heading text-sm font-bold py-3 rounded-full shadow-lg shadow-[#FF6B35]/30 active:scale-98 transition-transform cursor-pointer"
                     id="btn-confirm-bite-place"
                   >
-                    Chuẩn luôn 😋
+                    {t('cameraConfirmDish')}
                   </button>
 
                   <button
@@ -1288,10 +1327,10 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
                         longitude: userCoords.lng,
                       });
                     }}
-                    className="w-full bg-transparent text-[#594139] hover:bg-[#F4F4F0] font-heading text-xs font-semibold py-2 rounded-full text-center transition-colors"
+                    className="w-full bg-transparent text-[#594139] hover:bg-[#F4F4F0] font-heading text-xs font-semibold py-2 rounded-full text-center transition-colors cursor-pointer"
                     id="btn-add-community-spot"
                   >
-                    Không phải quán này / Đóng góp quán mới 👀
+                    {t('cameraContributeSpot')}
                   </button>
                 </div>
               </div>
@@ -1309,7 +1348,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
             <div className="flex justify-between items-center pb-2 border-b border-[#2D2926]/5">
               <div>
                 <h3 className="font-heading text-lg font-bold text-[#2D2926]">
-                  Đánh giá nhanh Bite 😋
+                  {t('cameraReviewModalTitle')}
                 </h3>
                 <p className="text-xs text-[#594139]/70">
                   {selectedPlaceCandidate?.name || 'Bún Cá Cô Lan'}
@@ -1326,43 +1365,43 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
             {/* 1. Ngon? */}
             <div className="flex flex-col gap-2">
               <label className="font-heading text-xs font-bold text-[#2D2926]">
-                Món ăn ngon không? <span className="text-[10px] font-normal text-[#2D2926]/50">(Tùy chọn)</span>
+                {t('cameraTasteQuestion')} <span className="text-[10px] font-normal text-[#2D2926]/50">({t('cameraOptional')})</span>
               </label>
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setTasteRating(tasteRating === 'tasty' ? null : 'tasty')}
-                  className={`py-2.5 px-2 rounded-2xl flex items-center justify-center gap-1.5 font-heading text-xs font-bold transition-all ${
+                  className={`py-2.5 px-2 rounded-2xl flex items-center justify-center gap-1.5 font-heading text-xs font-bold transition-all cursor-pointer ${
                     tasteRating === 'tasty'
                       ? 'bg-[#FF6B35] text-white shadow-md shadow-[#FF6B35]/30'
                       : 'bg-[#F4F4F0] text-[#2D2926] hover:bg-[#E9E8E4]'
                   }`}
                 >
-                  <span>😍</span> Ngon xỉu
+                  <span>😍</span> {t('tasteTasty')}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setTasteRating(tasteRating === 'normal' ? null : 'normal')}
-                  className={`py-2.5 px-2 rounded-2xl flex items-center justify-center gap-1.5 font-heading text-xs font-bold transition-all ${
+                  className={`py-2.5 px-2 rounded-2xl flex items-center justify-center gap-1.5 font-heading text-xs font-bold transition-all cursor-pointer ${
                     tasteRating === 'normal'
                       ? 'bg-[#00A7CB] text-white shadow-md'
                       : 'bg-[#F4F4F0] text-[#2D2926] hover:bg-[#E9E8E4]'
                   }`}
                 >
-                  <span>😐</span> Ổn áp
+                  <span>😐</span> {t('tasteNormal')}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setTasteRating(tasteRating === 'bad' ? null : 'bad')}
-                  className={`py-2.5 px-2 rounded-2xl flex items-center justify-center gap-1.5 font-heading text-xs font-bold transition-all ${
+                  className={`py-2.5 px-2 rounded-2xl flex items-center justify-center gap-1.5 font-heading text-xs font-bold transition-all cursor-pointer ${
                     tasteRating === 'bad'
                       ? 'bg-[#BA1A1A] text-white shadow-md'
                       : 'bg-[#F4F4F0] text-[#2D2926] hover:bg-[#E9E8E4]'
                   }`}
                 >
-                  <span>💀</span> Không ổn
+                  <span>💀</span> {t('tasteBad')}
                 </button>
               </div>
             </div>
@@ -1370,43 +1409,43 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
             {/* 2. Giá? */}
             <div className="flex flex-col gap-2">
               <label className="font-heading text-xs font-bold text-[#2D2926]">
-                Giá cả thế nào? <span className="text-[10px] font-normal text-[#2D2926]/50">(Tùy chọn)</span>
+                {t('cameraPriceQuestion')} <span className="text-[10px] font-normal text-[#2D2926]/50">({t('cameraOptional')})</span>
               </label>
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setPriceRating(priceRating === 'good_value' ? null : 'good_value')}
-                  className={`py-2 px-1.5 rounded-2xl font-heading text-xs font-semibold transition-all ${
+                  className={`py-2 px-1.5 rounded-2xl font-heading text-xs font-semibold transition-all cursor-pointer ${
                     priceRating === 'good_value'
                       ? 'bg-[#2EC4B6] text-white font-bold shadow-md'
                       : 'bg-[#F4F4F0] text-[#2D2926]'
                   }`}
                 >
-                  💚 Đáng tiền
+                  {t('priceGoodValue')}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPriceRating(priceRating === 'fair' ? null : 'fair')}
-                  className={`py-2 px-1.5 rounded-2xl font-heading text-xs font-semibold transition-all ${
+                  className={`py-2 px-1.5 rounded-2xl font-heading text-xs font-semibold transition-all cursor-pointer ${
                     priceRating === 'fair'
                       ? 'bg-[#FF6B35] text-white font-bold shadow-md'
                       : 'bg-[#F4F4F0] text-[#2D2926]'
                   }`}
                 >
-                  🟡 Hợp lý
+                  {t('priceFair')}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPriceRating(priceRating === 'expensive' ? null : 'expensive')}
-                  className={`py-2 px-1.5 rounded-2xl font-heading text-xs font-semibold transition-all ${
+                  className={`py-2 px-1.5 rounded-2xl font-heading text-xs font-semibold transition-all cursor-pointer ${
                     priceRating === 'expensive'
                       ? 'bg-[#BA1A1A] text-white font-bold shadow-md'
                       : 'bg-[#F4F4F0] text-[#2D2926]'
                   }`}
                 >
-                  🔴 Hơi chát
+                  {t('priceExpensive')}
                 </button>
               </div>
             </div>
@@ -1414,26 +1453,26 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
             {/* 3. Quay lại? */}
             <div className="flex items-center justify-between bg-[#F4F4F0] p-3 rounded-2xl">
               <span className="font-heading text-xs font-bold text-[#2D2926]">
-                Bạn có muốn quay lại không? <span className="text-[10px] font-normal text-[#2D2926]/50">(Tùy chọn)</span>
+                {t('cameraReturnQuestion')} <span className="text-[10px] font-normal text-[#2D2926]/50">({t('cameraOptional')})</span>
               </span>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setWouldReturn(wouldReturn === true ? null : true)}
-                  className={`px-3 py-1 rounded-full text-xs font-heading font-bold ${
+                  className={`px-3 py-1 rounded-full text-xs font-heading font-bold cursor-pointer ${
                     wouldReturn === true ? 'bg-[#2EC4B6] text-white shadow-sm' : 'bg-white text-[#2D2926]'
                   }`}
                 >
-                  Có
+                  {t('cameraReturnYes')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setWouldReturn(wouldReturn === false ? null : false)}
-                  className={`px-3 py-1 rounded-full text-xs font-heading font-bold ${
+                  className={`px-3 py-1 rounded-full text-xs font-heading font-bold cursor-pointer ${
                     wouldReturn === false ? 'bg-[#BA1A1A] text-white shadow-sm' : 'bg-white text-[#2D2926]'
                   }`}
                 >
-                  Không
+                  {t('cameraReturnNo')}
                 </button>
               </div>
             </div>
@@ -1441,13 +1480,13 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
             {/* 4. Short Note */}
             <div className="flex flex-col gap-1.5">
               <label className="font-heading text-xs font-bold text-[#2D2926]">
-                Ghi chú 1 câu ngắn: <span className="text-[10px] font-normal text-[#2D2926]/50">(Tùy chọn)</span>
+                {t('cameraCaptionLabel')}: <span className="text-[10px] font-normal text-[#2D2926]/50">({t('cameraOptional')})</span>
               </label>
               <input
                 type="text"
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
-                placeholder="Ví dụ: Nước dùng siêu ngọt, cá rán giòn rụm!"
+                placeholder={t('cameraCaptionPlaceholder')}
                 className="w-full bg-[#F4F4F0] border border-[#2D2926]/10 rounded-2xl px-3.5 py-2.5 text-xs text-[#2D2926] focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
               />
             </div>
@@ -1456,7 +1495,7 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
             <button
               onClick={handleSubmitReview}
               disabled={isSubmittingReview}
-              className={`w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white font-heading text-sm font-bold py-3.5 rounded-full shadow-lg shadow-[#FF6B35]/30 active:scale-98 transition-all flex items-center justify-center gap-2 ${
+              className={`w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white font-heading text-sm font-bold py-3.5 rounded-full shadow-lg shadow-[#FF6B35]/30 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 isSubmittingReview ? 'opacity-75 cursor-not-allowed' : ''
               }`}
               id="btn-save-bite-final"
@@ -1464,10 +1503,10 @@ export const CameraBiteView: React.FC<CameraBiteViewProps> = ({
               {isSubmittingReview ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Đang lưu Bite...</span>
+                  <span>{t('cameraSavingBite')}</span>
                 </>
               ) : (
-                <span>Lưu Bite & Mở Hành trình (+60 XP) ✨</span>
+                <span>{t('cameraSaveBiteBtn')}</span>
               )}
             </button>
           </div>

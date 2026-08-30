@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, LeaderboardUser, LeaderboardTier } from '../types';
 import { SAMPLE_FOODIE_PROFILES, INITIAL_USER, EMPTY_USER } from '../data/seedData';
+import { useLanguage } from '../context/LanguageContext';
 
 interface LeaderboardModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   onSwitchUser,
   onNavigateToPassport,
 }) => {
+  const { isVi } = useLanguage();
   const [filter, setFilter] = useState<TabFilter>('season1');
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [customIdInput, setCustomIdInput] = useState('');
@@ -56,15 +58,15 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
     rawUsers.push({
       id: currentUser.id,
       username: currentUsername,
-      name: currentUser.displayName || currentUser.name || 'Thợ Săn Ẩm Thực',
+      name: currentUser.displayName || currentUser.name || (isVi ? 'Thợ Săn Ẩm Thực' : 'Food Hunter'),
       avatarUrl: currentUser.avatarUrl,
-      activeTitle: currentUser.activeTitle || '🥢 Tân Binh Vị Giác',
+      activeTitle: currentUser.activeTitle || (isVi ? '🥢 Tân Binh Vị Giác' : '🥢 Taste Rookie'),
       xp: currentUser.xp,
       level: currentUser.level || 1,
       verifiedBitesCount: currentUserDiscovered,
       firstBitesCount: currentUserFirstBites,
       badgesCount: currentUserBadges,
-      districtName: 'Cầu Giấy',
+      districtName: isVi ? 'Cầu Giấy' : 'Cau Giay',
       isCurrentUser: true,
     });
 
@@ -82,7 +84,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
           verifiedBitesCount: f.stats.placesDiscovered,
           firstBitesCount: f.stats.firstBitesCount,
           badgesCount: f.availableTitles.length + 2,
-          districtName: f.districtProgress[0]?.districtName || 'Hà Nội',
+          districtName: f.districtProgress[0]?.districtName || (isVi ? 'Hà Nội' : 'Hanoi'),
           isCurrentUser: false,
         });
       }
@@ -118,7 +120,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
         trend: rank <= 3 ? 'up' : 'same',
       };
     });
-  }, [currentUser]);
+  }, [currentUser, isVi]);
 
   const currentUserRankInfo = leaderboardList.find((u) => u.isCurrentUser) || {
     rank: 4,
@@ -151,8 +153,8 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
       name: cleanDisplayName,
       displayName: cleanDisplayName,
       avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`,
-      activeTitle: '🥢 Tân Binh Vị Giác',
-      availableTitles: ['🥢 Tân Binh Vị Giác', '🗺️ Kẻ Lang Thang'],
+      activeTitle: isVi ? '🥢 Tân Binh Vị Giác' : '🥢 Taste Rookie',
+      availableTitles: isVi ? ['🥢 Tân Binh Vị Giác', '🗺️ Kẻ Lang Thang'] : ['🥢 Taste Rookie', '🗺️ Wanderer'],
       level: 3,
       xp: 250,
       nextLevelXp: 500,
@@ -162,7 +164,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
         firstBitesCount: 0,
       },
       districtProgress: [
-        { districtId: 'cau_giay', districtName: 'Cầu Giấy', completed: 1, total: 6 },
+        { districtId: 'cau_giay', districtName: isVi ? 'Cầu Giấy' : 'Cau Giay', completed: 1, total: 6 },
       ],
       knowledgeProgress: {
         smartBiter: { completed: false, bestScore: 0 },
@@ -197,12 +199,12 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <h2 className="text-base font-bold tracking-tight text-white">Đua Top Thực Thần</h2>
+                <h2 className="text-base font-bold tracking-tight text-white">{isVi ? 'Đua Top Thực Thần' : 'Gourmet Leaderboard'}</h2>
                 <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                  Mùa 1
+                  {isVi ? 'Mùa 1' : 'Season 1'}
                 </span>
               </div>
-              <p className="text-xs text-neutral-400">Bảng xếp hạng ẩm thực thời gian thực</p>
+              <p className="text-xs text-neutral-400">{isVi ? 'Bảng xếp hạng ẩm thực thời gian thực' : 'Real-time foodie leaderboard & ranking'}</p>
             </div>
           </div>
 
@@ -210,9 +212,9 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
             <button
               onClick={() => setShowAccountSwitcher(!showAccountSwitcher)}
               className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[#2D2824] hover:bg-[#3D3732] text-amber-300 border border-amber-500/20 transition-all flex items-center space-x-1"
-              title="Chuyển đổi tài khoản đua top"
+              title={isVi ? 'Chuyển đổi tài khoản đua top' : 'Switch test hunter account'}
             >
-              <span>👤 Đổi ID</span>
+              <span>👤 {isVi ? 'Đổi ID' : 'Switch ID'}</span>
             </button>
             <button
               onClick={onClose}
@@ -234,13 +236,13 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="font-bold text-amber-400 uppercase tracking-wider text-[11px]">
-                  ⚡ Chọn tài khoản đua top thử nghiệm
+                  ⚡ {isVi ? 'Chọn tài khoản đua top thử nghiệm' : 'Select test hunter profile'}
                 </span>
                 <button
                   onClick={() => setShowAccountSwitcher(false)}
                   className="text-neutral-400 hover:text-white text-[11px]"
                 >
-                  Đóng
+                  {isVi ? 'Đóng' : 'Close'}
                 </button>
               </div>
 
@@ -256,8 +258,8 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                 >
                   <img src={INITIAL_USER.avatarUrl} alt="Tuấn Anh" className="w-7 h-7 rounded-full object-cover" />
                   <div className="truncate">
-                    <p className="font-bold text-[11px] truncate">Tuấn Anh (Rank 4)</p>
-                    <p className="text-[10px] text-neutral-400">@tuananh • 780 XP</p>
+                    <p className="font-bold text-[11px] truncate">{INITIAL_USER.name} (Rank 4)</p>
+                    <p className="text-[10px] text-neutral-400">@{INITIAL_USER.username} • {INITIAL_USER.xp} XP</p>
                   </div>
                 </button>
 
@@ -284,7 +286,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
               <form onSubmit={handleCreateCustomAccount} className="pt-2 border-t border-[#3A3530]/60 flex items-center space-x-1.5">
                 <input
                   type="text"
-                  placeholder="Nhập ID mới (vd: my_foodie_id)..."
+                  placeholder={isVi ? 'Nhập ID mới (vd: my_foodie_id)...' : 'Enter new ID (e.g. my_foodie_id)...'}
                   value={customIdInput}
                   onChange={(e) => setCustomIdInput(e.target.value)}
                   className="flex-1 bg-[#161412] border border-[#3A3530] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
@@ -294,7 +296,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   disabled={!customIdInput.trim()}
                   className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-lg transition-all"
                 >
-                  Tạo ID
+                  {isVi ? 'Tạo ID' : 'Create'}
                 </button>
               </form>
             </motion.div>
@@ -312,7 +314,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
-              Mùa 1 (Toàn Quốc)
+              {isVi ? 'Mùa 1 (Toàn Quốc)' : 'Season 1 (National)'}
             </button>
             <button
               onClick={() => setFilter('district')}
@@ -322,7 +324,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
-              Cầu Giấy
+              {isVi ? 'Cầu Giấy' : 'Cau Giay'}
             </button>
             <button
               onClick={() => setFilter('weekly')}
@@ -332,12 +334,12 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
-              Tuần Này
+              {isVi ? 'Tuần Này' : 'This Week'}
             </button>
           </div>
 
           <div className="flex items-center space-x-1 text-xs text-amber-400 font-medium">
-            <span>⏳ Còn 14 ngày</span>
+            <span>⏳ {isVi ? 'Còn 14 ngày' : '14 days left'}</span>
           </div>
         </div>
 
@@ -368,7 +370,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   {topThree[1].xp} XP
                 </div>
                 <div className="h-16 w-full bg-gradient-to-t from-slate-700/40 to-slate-600/10 rounded-t-xl mt-2 border-t-2 border-slate-400/50 flex items-center justify-center text-xs font-bold text-slate-300">
-                  🥈 Top 2
+                  🥈 {isVi ? 'Top 2' : '2nd Place'}
                 </div>
               </div>
             )}
@@ -399,7 +401,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   {topThree[0].xp} XP
                 </div>
                 <div className="h-24 w-full bg-gradient-to-t from-amber-600/40 to-amber-500/10 rounded-t-xl mt-2 border-t-2 border-amber-400/80 flex items-center justify-center text-xs font-extrabold text-amber-300">
-                  🥇 Quán Quân
+                  🥇 {isVi ? 'Quán Quân' : 'Champion'}
                 </div>
               </div>
             )}
@@ -427,7 +429,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                   {topThree[2].xp} XP
                 </div>
                 <div className="h-12 w-full bg-gradient-to-t from-amber-900/40 to-amber-800/10 rounded-t-xl mt-2 border-t-2 border-amber-700/50 flex items-center justify-center text-xs font-bold text-amber-400">
-                  🥉 Top 3
+                  🥉 {isVi ? 'Top 3' : '3rd Place'}
                 </div>
               </div>
             )}
@@ -436,7 +438,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
           {/* Ranks 4+ List */}
           <div className="space-y-2 pt-2">
             <p className="text-xs font-bold uppercase tracking-wider text-neutral-400 px-1">
-              Top Thợ Săn Đang Đua Hạng
+              {isVi ? 'Top Thợ Săn Đang Đua Hạng' : 'Hunters In The Race'}
             </p>
 
             {remainingList.map((hunter) => (
@@ -469,7 +471,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                       <p className="font-bold text-xs text-white truncate">{hunter.displayName}</p>
                       {hunter.isCurrentUser && (
                         <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-orange-500 text-white">
-                          BẠN
+                          {isVi ? 'BẠN' : 'YOU'}
                         </span>
                       )}
                     </div>
@@ -496,7 +498,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
         <div className="p-4 bg-gradient-to-t from-[#141210] to-[#1E1B18] border-t border-[#3A3530] flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/40 flex flex-col items-center justify-center text-orange-400">
-              <span className="text-[9px] font-black uppercase leading-none">Hạng</span>
+              <span className="text-[9px] font-black uppercase leading-none">{isVi ? 'Hạng' : 'Rank'}</span>
               <span className="text-sm font-extrabold leading-tight">#{currentUserRankInfo.rank}</span>
             </div>
 
@@ -524,7 +526,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                 }}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white shadow-md transition-all"
               >
-                Đăng nhập đua top
+                {isVi ? 'Đăng nhập đua top' : 'Login to compete'}
               </button>
             ) : (
               <button
@@ -534,7 +536,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                 }}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#2C2621] hover:bg-[#3C342D] border border-amber-500/30 text-amber-300 transition-all"
               >
-                Nhận thêm XP 🎯
+                {isVi ? 'Nhận thêm XP 🎯' : 'Earn more XP 🎯'}
               </button>
             )}
           </div>

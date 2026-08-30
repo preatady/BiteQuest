@@ -46,7 +46,7 @@ export const MysteryDropModal: React.FC<MysteryDropModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+      className="fixed inset-0 z-[999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
       onClick={handleResetAndClose}
     >
       <div

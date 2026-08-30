@@ -460,7 +460,7 @@ export const BiteRouletteModal: React.FC<BiteRouletteModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 transition-all duration-300 animate-fade-in"
+      className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 transition-all duration-300 animate-fade-in"
       onClick={onClose}
       id="bite-roulette-modal-backdrop"
     >

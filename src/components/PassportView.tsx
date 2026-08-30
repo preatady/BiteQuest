@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { DistrictPassport, User } from '../types';
 import { KnowledgeTrackId, KNOWLEDGE_TRACKS } from '../data/knowledgeQuestions';
+import { useLanguage } from '../context/LanguageContext';
 
 export type TitleRarity = 'legendary' | 'epic' | 'rare' | 'special';
 
@@ -386,6 +387,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
   onUpdateTitle,
   onOpenLeaderboard,
 }) => {
+  const { isVi, t } = useLanguage();
   const [selectedDistrict, setSelectedDistrict] = useState<string>('cau_giay');
   const [viewTab, setViewTab] = useState<'titles' | 'challenges' | 'knowledge'>('titles');
   const [titleFilter, setTitleFilter] = useState<'all' | 'unlocked' | 'locked' | 'legendary'>('all');
@@ -414,240 +416,265 @@ export const PassportView: React.FC<PassportViewProps> = ({
     const tayHoCompleted = user?.districtProgress?.find((d) => d.districtId === 'tay_ho')?.completed || 0;
     const baDinhCompleted = user?.districtProgress?.find((d) => d.districtId === 'ba_dinh')?.completed || 0;
 
-    const isCauGiayDone = cauGiayCompleted >= 4 || Boolean(user?.availableTitles?.includes('👑 Thực Thần Cầu Giấy'));
-    const isDongDaDone = dongDaCompleted >= 4 || Boolean(user?.availableTitles?.includes('🦪 Chiến Thần Chùa Láng'));
-    const isHoanKiemDone = hoanKiemCompleted >= 5 || Boolean(user?.availableTitles?.includes('🏮 Thổ Địa Phố Cổ'));
-    const isTayHoDone = tayHoCompleted >= 4 || Boolean(user?.availableTitles?.includes('🌅 Tín Đồ Hoàng Hôn Hồ Tây'));
-    const isBaDinhDone = baDinhCompleted >= 4 || Boolean(user?.availableTitles?.includes('🏛️ Bậc Thầy Tinh Hoa Ba Đình'));
+    const isCauGiayDone = cauGiayCompleted >= 4 || Boolean(user?.availableTitles?.some(t => t.includes('Cầu Giấy')));
+    const isDongDaDone = dongDaCompleted >= 4 || Boolean(user?.availableTitles?.some(t => t.includes('Chùa Láng')));
+    const isHoanKiemDone = hoanKiemCompleted >= 5 || Boolean(user?.availableTitles?.some(t => t.includes('Phố Cổ') || t.includes('Old Quarter')));
+    const isTayHoDone = tayHoCompleted >= 4 || Boolean(user?.availableTitles?.some(t => t.includes('Tây Hồ') || t.includes('West Lake')));
+    const isBaDinhDone = baDinhCompleted >= 4 || Boolean(user?.availableTitles?.some(t => t.includes('Ba Đình')));
 
-    const isSmartBiterDone = Boolean(smartBiterProgress?.completed) || Boolean(user?.availableTitles?.includes('🛡️ Smart Biter Tinh Anh'));
-    const isBiteGuardianDone = Boolean(biteGuardianProgress?.completed) || Boolean(user?.availableTitles?.includes('🧭 Bite Guardian Tối Cao'));
+    const isSmartBiterDone = Boolean(smartBiterProgress?.completed) || Boolean(user?.availableTitles?.some(t => t.includes('Smart Biter')));
+    const isBiteGuardianDone = Boolean(biteGuardianProgress?.completed) || Boolean(user?.availableTitles?.some(t => t.includes('Bite Guardian')));
     const firstBites = user?.stats?.firstBitesCount || 0;
-    const isFirstScoutDone = firstBites >= 1 || Boolean(user?.availableTitles?.includes('⚡ First Bite Tiên Phong'));
+    const isFirstScoutDone = firstBites >= 1 || Boolean(user?.availableTitles?.some(t => t.includes('First Bite')));
 
     const placesDiscovered = user?.stats?.placesDiscovered || 0;
-    const isNightOwlDone = placesDiscovered >= 10 || Boolean(user?.availableTitles?.includes('🌙 Kẻ Săn Đêm'));
-    const isNgoMasterDone = placesDiscovered >= 6 || Boolean(user?.availableTitles?.includes('🛵 Trùm Quán Ngõ Sâu'));
-    const isNoodleMasterDone = placesDiscovered >= 4 || Boolean(user?.availableTitles?.includes('🍜 Bậc Thầy Bún Phở'));
-    const isCoffeeDone = placesDiscovered >= 5 || Boolean(user?.availableTitles?.includes('☕ Tri Kỷ Cà Phê'));
+    const isNightOwlDone = placesDiscovered >= 10 || Boolean(user?.availableTitles?.some(t => t.includes('Đêm') || t.includes('Night')));
+    const isNgoMasterDone = placesDiscovered >= 6 || Boolean(user?.availableTitles?.some(t => t.includes('Ngõ') || t.includes('Alley')));
+    const isNoodleMasterDone = placesDiscovered >= 4 || Boolean(user?.availableTitles?.some(t => t.includes('Phở') || t.includes('Noodle')));
+    const isCoffeeDone = placesDiscovered >= 5 || Boolean(user?.availableTitles?.some(t => t.includes('Cà Phê') || t.includes('Coffee')));
 
     return [
       {
         id: 'title_cau_giay',
-        titleName: 'Thực Thần Cầu Giấy',
-        shortTag: 'Cầu Giấy Master',
+        titleName: isVi ? 'Thực Thần Cầu Giấy' : 'Cau Giay Food Legend',
+        shortTag: 'Cau Giay Master',
         rarity: 'legendary',
-        rarityLabel: 'HUYỀN THOẠI',
+        rarityLabel: isVi ? 'HUYỀN THOẠI' : 'LEGENDARY',
         emoji: '👑',
         districtId: 'cau_giay',
-        districtName: 'Cầu Giấy',
-        categoryDesc: 'Bá chủ ẩm thực ngõ phố & khu sinh viên',
-        conditionDesc: 'Hoàn thành từ 4/6 nhiệm vụ ẩm thực tại Cầu Giấy',
+        districtName: isVi ? 'Cầu Giấy' : 'Cau Giay',
+        categoryDesc: isVi ? 'Bá chủ ẩm thực ngõ phố & khu sinh viên' : 'Master of student alley street food gems',
+        conditionDesc: isVi ? 'Hoàn thành từ 4/6 nhiệm vụ ẩm thực tại Cầu Giấy' : 'Complete 4/6 food quests in Cau Giay',
         rewardXp: 300,
-        fomoStat: 'Chỉ 3.2% Thợ Săn mở khóa',
+        fomoStat: isVi ? 'Chỉ 3.2% Thợ Săn mở khóa' : 'Only 3.2% hunters unlocked',
         completed: isCauGiayDone,
         progressCurrent: Math.min(6, cauGiayCompleted),
         progressTotal: 6,
         unlockedDate: isCauGiayDone ? '15/05/2026' : undefined,
-        perks: ['Khung Avatar Vàng Hoàng Kim', 'Hào quang Thực Thần trên Bản Đồ', '+300 XP'],
+        perks: isVi
+          ? ['Khung Avatar Vàng Hoàng Kim', 'Hào quang Thực Thần trên Bản Đồ', '+300 XP']
+          : ['Golden Avatar Frame', 'Food Legend Aura on Map', '+300 XP'],
       },
       {
         id: 'title_dong_da',
-        titleName: 'Chiến Thần Chùa Láng',
-        shortTag: 'Đống Đa Slayer',
+        titleName: isVi ? 'Chiến Thần Chùa Láng' : 'Chua Lang Street Champion',
+        shortTag: 'Dong Da Slayer',
         rarity: 'epic',
-        rarityLabel: 'SỬ THI',
+        rarityLabel: isVi ? 'SỬ THI' : 'EPIC',
         emoji: '🦪',
         districtId: 'dong_da',
-        districtName: 'Đống Đa',
-        categoryDesc: 'Đệ nhất sành ốc Đặng Văn Ngữ & ăn vặt Chùa Láng',
-        conditionDesc: 'Chinh phục 4/6 điểm check-in tại quận Đống Đa',
+        districtName: isVi ? 'Đống Đa' : 'Dong Da',
+        categoryDesc: isVi ? 'Đệ nhất sành ốc Đặng Văn Ngữ & ăn vặt Chùa Láng' : 'Specialist in street snacks & Chua Lang seafood',
+        conditionDesc: isVi ? 'Chinh phục 4/6 điểm check-in tại quận Đống Đa' : 'Conquer 4/6 check-in locations in Dong Da',
         rewardXp: 200,
-        fomoStat: 'Chỉ 7.8% Thợ Săn sở hữu',
+        fomoStat: isVi ? 'Chỉ 7.8% Thợ Săn sở hữu' : 'Only 7.8% hunters possess this',
         completed: isDongDaDone,
         progressCurrent: Math.min(6, dongDaCompleted),
         progressTotal: 6,
         unlockedDate: isDongDaDone ? '14/05/2026' : undefined,
-        perks: ['Danh hiệu hiển thị bảng tin Bạn Bè', 'Badge Ốc Hoàng Gia', '+200 XP'],
+        perks: isVi
+          ? ['Danh hiệu hiển thị bảng tin Bạn Bè', 'Badge Ốc Hoàng Gia', '+200 XP']
+          : ['Feed showcase title', 'Royal Snails Badge', '+200 XP'],
       },
       {
         id: 'title_hoan_kiem',
-        titleName: 'Thổ Địa Phố Cổ',
+        titleName: isVi ? 'Thổ Địa Phố Cổ' : 'Old Quarter Connoisseur',
         shortTag: 'Old Quarter Legend',
         rarity: 'legendary',
-        rarityLabel: 'HUYỀN THOẠI',
+        rarityLabel: isVi ? 'HUYỀN THOẠI' : 'LEGENDARY',
         emoji: '🏮',
         districtId: 'hoan_kiem',
-        districtName: 'Hoàn Kiếm',
-        categoryDesc: 'Tinh hoa 36 Phố Phường & Cà phê Trứng cổ điển',
-        conditionDesc: 'Hoàn thành từ 5/6 thử thách ẩm thực Phố Cổ',
+        districtName: isVi ? 'Hoàn Kiếm' : 'Hoan Kiem',
+        categoryDesc: isVi ? 'Tinh hoa 36 Phố Phường & Cà phê Trứng cổ điển' : 'Heritage 36 streets culinary & classic egg coffee',
+        conditionDesc: isVi ? 'Hoàn thành từ 5/6 thử thách ẩm thực Phố Cổ' : 'Complete 5/6 heritage culinary quests in Old Quarter',
         rewardXp: 350,
-        fomoStat: 'Chỉ 1.9% Thợ Săn đạt được',
+        fomoStat: isVi ? 'Chỉ 1.9% Thợ Săn đạt được' : 'Only 1.9% hunters achieved',
         completed: isHoanKiemDone,
         progressCurrent: Math.min(6, hoanKiemCompleted),
         progressTotal: 6,
         unlockedDate: isHoanKiemDone ? '18/05/2026' : undefined,
-        perks: ['Huy hiệu Đèn Lồng Cổ Điển', 'Ưu tiên hiển thị trên Radar Fomo', '+350 XP'],
+        perks: isVi
+          ? ['Huy hiệu Đèn Lồng Cổ Điển', 'Ưu tiên hiển thị trên Radar Fomo', '+350 XP']
+          : ['Heritage Lantern Badge', 'Priority display on Fomo Radar', '+350 XP'],
       },
       {
         id: 'title_tay_ho',
-        titleName: 'Tín Đồ Hoàng Hôn Hồ Tây',
+        titleName: isVi ? 'Tín Đồ Hoàng Hôn Hồ Tây' : 'West Lake Sunset Gourmet',
         shortTag: 'West Lake VIP',
         rarity: 'epic',
-        rarityLabel: 'SỬ THI',
+        rarityLabel: isVi ? 'SỬ THI' : 'EPIC',
         emoji: '🌅',
         districtId: 'tay_ho',
-        districtName: 'Tây Hồ',
-        categoryDesc: 'Sành sỏi cà phê view hồ & ẩm thực đường Thanh Niên',
-        conditionDesc: 'Chinh phục 4/6 điểm check-in Tây Hồ',
+        districtName: isVi ? 'Tây Hồ' : 'Tay Ho',
+        categoryDesc: isVi ? 'Sành sỏi cà phê view hồ & ẩm thực đường Thanh Niên' : 'Lakefront cafe aficionado & Thanh Nien shrimp cakes',
+        conditionDesc: isVi ? 'Chinh phục 4/6 điểm check-in Tây Hồ' : 'Complete 4/6 check-ins in Tay Ho',
         rewardXp: 200,
-        fomoStat: 'Chỉ 6.4% Thợ Săn đạt được',
+        fomoStat: isVi ? 'Chỉ 6.4% Thợ Săn đạt được' : 'Only 6.4% hunters achieved',
         completed: isTayHoDone,
         progressCurrent: Math.min(6, tayHoCompleted),
         progressTotal: 6,
         unlockedDate: isTayHoDone ? '19/05/2026' : undefined,
-        perks: ['Khung Avatar Hoàng Hôn Tây Hồ', '+200 XP'],
+        perks: isVi
+          ? ['Khung Avatar Hoàng Hôn Tây Hồ', '+200 XP']
+          : ['West Lake Sunset Avatar Frame', '+200 XP'],
       },
       {
         id: 'title_ba_dinh',
-        titleName: 'Bậc Thầy Tinh Hoa Ba Đình',
+        titleName: isVi ? 'Bậc Thầy Tinh Hoa Ba Đình' : 'Ba Dinh Heritage Master',
         shortTag: 'Ba Dinh Master',
         rarity: 'rare',
-        rarityLabel: 'HIẾM',
+        rarityLabel: isVi ? 'HIẾM' : 'RARE',
         emoji: '🏛️',
         districtId: 'ba_dinh',
-        districtName: 'Ba Đình',
-        categoryDesc: 'Nét thanh lịch Trúc Bạch & Phở cuốn Ngũ Xã trứ danh',
-        conditionDesc: 'Chinh phục 4/6 thử thách ẩm thực Ba Đình',
+        districtName: isVi ? 'Ba Đình' : 'Ba Dinh',
+        categoryDesc: isVi ? 'Nét thanh lịch Trúc Bạch & Phở cuốn Ngũ Xã trứ danh' : 'Truc Bach elegance & signature Ngu Xa rolled pho',
+        conditionDesc: isVi ? 'Chinh phục 4/6 thử thách ẩm thực Ba Đình' : 'Complete 4/6 food challenges in Ba Dinh',
         rewardXp: 150,
-        fomoStat: 'Chỉ 12.5% Thợ Săn đạt được',
+        fomoStat: isVi ? 'Chỉ 12.5% Thợ Săn đạt được' : 'Only 12.5% hunters achieved',
         completed: isBaDinhDone,
         progressCurrent: Math.min(6, baDinhCompleted),
         progressTotal: 6,
         unlockedDate: isBaDinhDone ? '20/05/2026' : undefined,
-        perks: ['Huy hiệu Thanh Lịch Hà Thành', '+150 XP'],
+        perks: isVi
+          ? ['Huy hiệu Thanh Lịch Hà Thành', '+150 XP']
+          : ['Hanoi Elegance Badge', '+150 XP'],
       },
       {
         id: 'title_smart_biter',
-        titleName: 'Smart Biter Tinh Anh',
-        shortTag: 'Thánh Săn Giá Thật',
+        titleName: isVi ? 'Smart Biter Tinh Anh' : 'Elite Smart Biter',
+        shortTag: isVi ? 'Thánh Săn Giá Thật' : 'Fair Price Scout',
         rarity: 'epic',
-        rarityLabel: 'SỬ THI',
+        rarityLabel: isVi ? 'SỬ THI' : 'EPIC',
         emoji: '🛡️',
-        categoryDesc: 'Minh bạch giá cả, đối chiếu hóa đơn & bằng chứng chuẩn',
-        conditionDesc: 'Vượt qua 5/5 câu hỏi thử thách kỹ năng Smart Biter',
+        categoryDesc: isVi ? 'Minh bạch giá cả, đối chiếu hóa đơn & bằng chứng chuẩn' : 'Price transparency & verified bill comparison',
+        conditionDesc: isVi ? 'Vượt qua 5/5 câu hỏi thử thách kỹ năng Smart Biter' : 'Pass 5/5 Smart Biter situational questions',
         rewardXp: 200,
-        fomoStat: 'Chỉ 5.1% người đạt điểm tuyệt đối',
+        fomoStat: isVi ? 'Chỉ 5.1% người đạt điểm tuyệt đối' : 'Only 5.1% attained perfect score',
         completed: isSmartBiterDone,
         progressCurrent: isSmartBiterDone ? 5 : (smartBiterProgress?.bestScore || 0),
         progressTotal: 5,
         unlockedDate: isSmartBiterDone ? '16/05/2026' : undefined,
-        perks: ['Tích xanh Xác Minh Thông Minh', 'Tăng 20% uy tín đánh giá', '+200 XP'],
+        perks: isVi
+          ? ['Tích xanh Xác Minh Thông Minh', 'Tăng 20% uy tín đánh giá', '+200 XP']
+          : ['Smart Verified Badge', '+20% review trust weight', '+200 XP'],
       },
       {
         id: 'title_bite_guardian',
-        titleName: 'Bite Guardian Tối Cao',
-        shortTag: 'Người Gác Đền Vị Giác',
+        titleName: isVi ? 'Bite Guardian Tối Cao' : 'Supreme Bite Guardian',
+        shortTag: isVi ? 'Người Gác Đền Vị Giác' : 'Taste Guardian',
         rarity: 'epic',
-        rarityLabel: 'SỬ THI',
+        rarityLabel: isVi ? 'SỬ THI' : 'EPIC',
         emoji: '🧭',
-        categoryDesc: 'Bảo vệ cộng đồng ẩm thực, review công tâm & chuẩn mực',
-        conditionDesc: 'Vượt qua 5/5 tình huống đạo đức & trách nhiệm ẩm thực',
+        categoryDesc: isVi ? 'Bảo vệ cộng đồng ẩm thực, review công tâm & chuẩn mực' : 'Safeguarding food community with unbiased reviews',
+        conditionDesc: isVi ? 'Vượt qua 5/5 tình huống đạo đức & trách nhiệm ẩm thực' : 'Pass 5/5 community responsibility situations',
         rewardXp: 200,
-        fomoStat: 'Chỉ 4.8% Thợ Săn bảo vệ thành công',
+        fomoStat: isVi ? 'Chỉ 4.8% Thợ Săn bảo vệ thành công' : 'Only 4.8% hunters certified',
         completed: isBiteGuardianDone,
         progressCurrent: isBiteGuardianDone ? 5 : (biteGuardianProgress?.bestScore || 0),
         progressTotal: 5,
         unlockedDate: isBiteGuardianDone ? '17/05/2026' : undefined,
-        perks: ['Huy hiệu Người Gác Đền 🧭', 'Quyền đề xuất quán ẩn nhanh', '+200 XP'],
+        perks: isVi
+          ? ['Huy hiệu Người Gác Đền 🧭', 'Quyền đề xuất quán ẩn nhanh', '+200 XP']
+          : ['Guardian Badge 🧭', 'Fast-track hidden gem submission', '+200 XP'],
       },
       {
         id: 'title_first_scout',
-        titleName: 'First Bite Tiên Phong',
+        titleName: isVi ? 'First Bite Tiên Phong' : 'First Bite Pioneer',
         shortTag: 'Pioneer Scout',
         rarity: 'legendary',
-        rarityLabel: 'HUYỀN THOẠI',
+        rarityLabel: isVi ? 'HUYỀN THOẠI' : 'LEGENDARY',
         emoji: '⚡',
-        categoryDesc: 'Người đầu tiên khám phá và xác minh quán ăn ẩn chưa ai biết',
-        conditionDesc: 'Khai phá thành công ít nhất 1 First Bite trong thành phố',
+        categoryDesc: isVi ? 'Người đầu tiên khám phá và xác minh quán ăn ẩn chưa ai biết' : 'First discoverer and verifier of undiscovered eateries',
+        conditionDesc: isVi ? 'Khai phá thành công ít nhất 1 First Bite trong thành phố' : 'Discover at least 1 verified First Bite venue',
         rewardXp: 300,
-        fomoStat: 'Chỉ 1.2% Thợ Săn Tiên Phong',
+        fomoStat: isVi ? 'Chỉ 1.2% Thợ Săn Tiên Phong' : 'Only 1.2% pioneer scouts',
         completed: isFirstScoutDone,
         progressCurrent: firstBites,
         progressTotal: 1,
         unlockedDate: isFirstScoutDone ? '10/05/2026' : undefined,
-        perks: ['Vinh danh tên vĩnh viễn trên trang quán', 'Hiệu ứng Tia Sét Vàng', '+300 XP'],
+        perks: isVi
+          ? ['Vinh danh tên vĩnh viễn trên trang quán', 'Hiệu ứng Tia Sét Vàng', '+300 XP']
+          : ['Permanent legacy credit on place page', 'Golden Lightning visual aura', '+300 XP'],
       },
       {
         id: 'title_night_owl',
-        titleName: 'Thần Sấm Ăn Đêm',
+        titleName: isVi ? 'Thần Sấm Ăn Đêm' : 'Midnight Gourmet',
         shortTag: 'Midnight Gourmet',
         rarity: 'rare',
-        rarityLabel: 'HIẾM',
+        rarityLabel: isVi ? 'HIẾM' : 'RARE',
         emoji: '🌙',
-        categoryDesc: 'Chuyên gia săn lùng những quán đêm nóng hổi sau 22:00',
-        conditionDesc: 'Check-in 3 lần tại các quán mở khuya sau 22h',
+        categoryDesc: isVi ? 'Chuyên gia săn lùng những quán đêm nóng hổi sau 22:00' : 'Late night food hunter after 22:00',
+        conditionDesc: isVi ? 'Check-in 3 lần tại các quán mở khuya sau 22h' : 'Check in 3 times at venues open past 22:00',
         rewardXp: 120,
-        fomoStat: 'Chỉ 14.3% Cú Đêm đạt được',
+        fomoStat: isVi ? 'Chỉ 14.3% Cú Đêm đạt được' : 'Only 14.3% night owls achieved',
         completed: isNightOwlDone,
         progressCurrent: isNightOwlDone ? 3 : Math.min(2, Math.floor(placesDiscovered / 4)),
         progressTotal: 3,
         unlockedDate: isNightOwlDone ? '18/05/2026' : undefined,
-        perks: ['Biểu tượng Trăng Khuyết phát sáng', '+120 XP'],
+        perks: isVi
+          ? ['Biểu tượng Trăng Khuyết phát sáng', '+120 XP']
+          : ['Glowing Crescent Moon badge', '+120 XP'],
       },
       {
         id: 'title_ngo_master',
-        titleName: 'Trùm Quán Ngõ Sâu',
+        titleName: isVi ? 'Trùm Quán Ngõ Sâu' : 'Alley Food Dominator',
         shortTag: 'Alley Dominator',
         rarity: 'rare',
-        rarityLabel: 'HIẾM',
+        rarityLabel: isVi ? 'HIẾM' : 'RARE',
         emoji: '🛵',
-        categoryDesc: 'Luồn lách mọi ngõ ngách ngóc ngách không sợ lạc lối',
-        conditionDesc: 'Khám phá 5 quán ăn nằm sâu trong ngõ hẻm Hà Nội',
+        categoryDesc: isVi ? 'Luồn lách mọi ngõ ngách ngóc ngách không sợ lạc lối' : 'Navigating deepest labyrinth alleys fearless of dead ends',
+        conditionDesc: isVi ? 'Khám phá 5 quán ăn nằm sâu trong ngõ hẻm Hà Nội' : 'Discover 5 authentic eateries hidden in deep alleys',
         rewardXp: 150,
-        fomoStat: 'Chỉ 9.6% Thợ Săn làm được',
+        fomoStat: isVi ? 'Chỉ 9.6% Thợ Săn làm được' : 'Only 9.6% hunters accomplished',
         completed: isNgoMasterDone,
         progressCurrent: isNgoMasterDone ? 5 : Math.min(4, Math.floor(placesDiscovered / 2)),
         progressTotal: 5,
         unlockedDate: isNgoMasterDone ? '12/05/2026' : undefined,
-        perks: ['Huy hiệu Xe Máy Luồn Ngõ 🛵', '+150 XP'],
+        perks: isVi
+          ? ['Huy hiệu Xe Máy Luồn Ngõ 🛵', '+150 XP']
+          : ['Alley Motorbike Navigator badge 🛵', '+150 XP'],
       },
       {
         id: 'title_noodle_master',
-        titleName: 'Bậc Thầy Bún Phở',
+        titleName: isVi ? 'Bậc Thầy Bún Phở' : 'Noodle Sovereign',
         shortTag: 'Noodle Sovereign',
         rarity: 'special',
-        rarityLabel: 'ĐẶC SẮC',
+        rarityLabel: isVi ? 'ĐẶC SẮC' : 'SPECIAL',
         emoji: '🍜',
-        categoryDesc: 'Sành từng sợi bún giòn, nước dùng thanh ngọt chuẩn vị',
-        conditionDesc: 'Thưởng thức 5 loại bún / phở / mì truyền thống khác nhau',
+        categoryDesc: isVi ? 'Sành từng sợi bún giòn, nước dùng thanh ngọt chuẩn vị' : 'Connoisseur of broth depth & heritage noodles',
+        conditionDesc: isVi ? 'Thưởng thức 5 loại bún / phở / mì truyền thống khác nhau' : 'Taste 5 varieties of traditional Vietnamese noodles',
         rewardXp: 100,
-        fomoStat: '24.1% người chơi đã mở',
+        fomoStat: isVi ? '24.1% người chơi đã mở' : '24.1% players unlocked',
         completed: isNoodleMasterDone,
         progressCurrent: isNoodleMasterDone ? 5 : Math.min(4, placesDiscovered),
         progressTotal: 5,
         unlockedDate: isNoodleMasterDone ? '09/05/2026' : undefined,
-        perks: ['Huy hiệu Bát Phở Bốc Khói 🍜', '+100 XP'],
+        perks: isVi
+          ? ['Huy hiệu Bát Phở Bốc Khói 🍜', '+100 XP']
+          : ['Steaming Pho Bowl badge 🍜', '+100 XP'],
       },
       {
         id: 'title_coffee_connoisseur',
-        titleName: 'Tri Kỷ Cà Phê',
+        titleName: isVi ? 'Tri Kỷ Cà Phê' : 'Coffee Connoisseur',
         shortTag: 'Specialty Master',
         rarity: 'special',
-        rarityLabel: 'ĐẶC SẮC',
+        rarityLabel: isVi ? 'ĐẶC SẮC' : 'SPECIAL',
         emoji: '☕',
-        categoryDesc: 'Gu cà phê tinh tế từ Pour-over, Cà phê trứng đến Cold brew',
-        conditionDesc: 'Check-in 5 quán café specialty hoặc view ban công',
+        categoryDesc: isVi ? 'Gu cà phê tinh tế từ Pour-over, Cà phê trứng đến Cold brew' : 'Refined palate for egg coffee, cold brews & pour-overs',
+        conditionDesc: isVi ? 'Check-in 5 quán café specialty hoặc view ban công' : 'Check in at 5 specialty cafes or balcony viewpoints',
         rewardXp: 100,
-        fomoStat: '18.9% người chơi sở hữu',
+        fomoStat: isVi ? '18.9% người chơi sở hữu' : '18.9% players unlocked',
         completed: isCoffeeDone,
         progressCurrent: isCoffeeDone ? 5 : Math.min(4, Math.floor(placesDiscovered / 2)),
         progressTotal: 5,
         unlockedDate: isCoffeeDone ? '11/05/2026' : undefined,
-        perks: ['Huy hiệu Tách Cà Phê Hoàng Gia', '+100 XP'],
+        perks: isVi
+          ? ['Huy hiệu Tách Cà Phê Hoàng Gia', '+100 XP']
+          : ['Royal Coffee Cup badge', '+100 XP'],
       },
     ];
   }, [
+    isVi,
     completedCount,
     smartBiterProgress,
     biteGuardianProgress,
@@ -673,18 +700,22 @@ export const PassportView: React.FC<PassportViewProps> = ({
     if (onUpdateTitle) {
       onUpdateTitle(title.titleName);
     }
-    setEquippedToast(`Đã trang bị danh hiệu "${title.titleName}" vào hồ sơ! ✨`);
+    setEquippedToast(
+      isVi
+        ? `Đã trang bị danh hiệu "${title.titleName}" vào hồ sơ! ✨`
+        : `Equipped title "${title.titleName}" to profile! ✨`
+    );
     setTimeout(() => {
       setEquippedToast(null);
     }, 3000);
   };
 
   const districtOptions = [
-    { key: 'cau_giay', label: 'Cầu Giấy', count: `${completedCount}/${totalCount}` },
-    { key: 'dong_da', label: 'Đống Đa', count: '4/6' },
-    { key: 'ba_dinh', label: 'Ba Đình', count: '2/6' },
-    { key: 'hoan_kiem', label: 'Hoàn Kiếm', count: '4/6' },
-    { key: 'tay_ho', label: 'Tây Hồ', count: '2/6' },
+    { key: 'cau_giay', label: isVi ? 'Cầu Giấy' : 'Cau Giay', count: `${completedCount}/${totalCount}` },
+    { key: 'dong_da', label: isVi ? 'Đống Đa' : 'Dong Da', count: '4/6' },
+    { key: 'ba_dinh', label: isVi ? 'Ba Đình' : 'Ba Dinh', count: '2/6' },
+    { key: 'hoan_kiem', label: isVi ? 'Hoàn Kiếm' : 'Hoan Kiem', count: '4/6' },
+    { key: 'tay_ho', label: isVi ? 'Tây Hồ' : 'Tay Ho', count: '2/6' },
   ];
 
   return (
@@ -720,9 +751,9 @@ export const PassportView: React.FC<PassportViewProps> = ({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400"></span>
             </span>
-            <span>MÙA 1: ĐUA TOP THỰC THẦN</span>
+            <span>{isVi ? 'MÙA 1: ĐUA TOP THỰC THẦN' : 'SEASON 1: GOURMET RACE'}</span>
             <span className="text-amber-200/80 font-normal">|</span>
-            <span className="text-amber-200 font-bold">🔥 BẢNG VÀNG</span>
+            <span className="text-amber-200 font-bold">{isVi ? '🔥 BẢNG VÀNG' : '🔥 LEADERBOARD'}</span>
             <span className="text-[9px]">→</span>
           </button>
 
@@ -739,7 +770,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
               type="button"
               onClick={onOpenLeaderboard}
               className="relative shrink-0 text-left cursor-pointer group"
-              title="Xem Bảng xếp hạng Thực Thần"
+              title={isVi ? 'Xem Bảng xếp hạng Thực Thần' : 'View Gourmet Leaderboard'}
             >
               <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-amber-400 via-[#FF6B35] to-rose-500 p-0.5 shadow-md flex items-center justify-center transition-transform group-hover:scale-105">
                 <div className="w-full h-full bg-[#2D2926] rounded-[10px] flex items-center justify-center text-xl">
@@ -753,20 +784,20 @@ export const PassportView: React.FC<PassportViewProps> = ({
 
             <div className="min-w-0">
               <span className="text-[9px] font-heading font-bold text-amber-300/80 uppercase tracking-wider block leading-none mb-1">
-                Danh Hiệu Đang Mang
+                {isVi ? 'Danh Hiệu Đang Mang' : 'Equipped Title'}
               </span>
               <h2 className="font-heading text-sm sm:text-base font-black tracking-tight text-white truncate">
-                {user?.activeTitle || 'Bite Scout Mới'}
+                {user?.activeTitle || (isVi ? 'Bite Scout Mới' : 'New Bite Scout')}
               </h2>
             </div>
           </div>
 
           <div className="text-right shrink-0">
             <span className="text-[10px] font-heading font-bold text-white/70 block">
-              Đã mở <strong className="text-amber-300 font-black">{unlockedTitlesCount}</strong>/{totalTitlesCount}
+              {isVi ? 'Đã mở ' : 'Unlocked '}<strong className="text-amber-300 font-black">{unlockedTitlesCount}</strong>/{totalTitlesCount}
             </span>
             <span className="text-[9px] font-mono text-emerald-400 font-bold">
-              +{Math.round((unlockedTitlesCount / totalTitlesCount) * 100)}% danh vọng
+              +{Math.round((unlockedTitlesCount / totalTitlesCount) * 100)}% {isVi ? 'danh vọng' : 'fame'}
             </span>
           </div>
         </div>
@@ -782,7 +813,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
             </div>
           </div>
           <span className="text-[10px] font-heading font-bold text-amber-300 shrink-0">
-            {Math.round((unlockedTitlesCount / totalTitlesCount) * 100)}% HOÀN THÀNH
+            {Math.round((unlockedTitlesCount / totalTitlesCount) * 100)}% {isVi ? 'HOÀN THÀNH' : 'COMPLETE'}
           </span>
         </div>
       </section>
@@ -802,7 +833,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
           id="tab-titles-grid"
         >
           <span className="text-sm">🏆</span>
-          <span>Lưới Danh Hiệu ({unlockedTitlesCount}/{totalTitlesCount})</span>
+          <span>{isVi ? `Lưới Danh Hiệu (${unlockedTitlesCount}/${totalTitlesCount})` : `Titles (${unlockedTitlesCount}/${totalTitlesCount})`}</span>
         </button>
 
         <button
@@ -816,7 +847,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
           id="tab-district-challenges"
         >
           <span className="text-sm">🗺️</span>
-          <span>Nhiệm Vụ Quận</span>
+          <span>{isVi ? 'Nhiệm Vụ Quận' : 'District Quests'}</span>
         </button>
 
         <button
@@ -830,7 +861,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
           id="tab-knowledge-tracks"
         >
           <span className="text-sm">💡</span>
-          <span>Kỹ Năng ({isBothCompleted ? '2/2' : '1/2'})</span>
+          <span>{isVi ? `Kỹ Năng (${isBothCompleted ? '2/2' : '1/2'})` : `Skills (${isBothCompleted ? '2/2' : '1/2'})`}</span>
         </button>
       </div>
 
@@ -843,10 +874,10 @@ export const PassportView: React.FC<PassportViewProps> = ({
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
               {[
-                { key: 'all', label: `Tất cả (${totalTitlesCount})` },
-                { key: 'unlocked', label: `Đã mở (${unlockedTitlesCount}) ✨` },
-                { key: 'locked', label: `Đang săn (${totalTitlesCount - unlockedTitlesCount}) 🔒` },
-                { key: 'legendary', label: `👑 Huyền Thoại` },
+                { key: 'all', label: isVi ? `Tất cả (${totalTitlesCount})` : `All (${totalTitlesCount})` },
+                { key: 'unlocked', label: isVi ? `Đã mở (${unlockedTitlesCount}) ✨` : `Unlocked (${unlockedTitlesCount}) ✨` },
+                { key: 'locked', label: isVi ? `Đang săn (${totalTitlesCount - unlockedTitlesCount}) 🔒` : `Locked (${totalTitlesCount - unlockedTitlesCount}) 🔒` },
+                { key: 'legendary', label: isVi ? `👑 Huyền Thoại` : `👑 Legendary` },
               ].map((f) => (
                 <button
                   key={f.key}
@@ -864,7 +895,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
             </div>
 
             <span className="text-[10px] font-heading text-[#FF6B35] font-bold">
-              ⚡ Chạm để xem chi tiết
+              {isVi ? '⚡ Chạm để xem chi tiết' : '⚡ Tap for details'}
             </span>
           </div>
 
@@ -909,16 +940,16 @@ export const PassportView: React.FC<PassportViewProps> = ({
                     {title.completed ? (
                       isEquipped ? (
                         <span className="bg-amber-500 text-white text-[8px] font-heading font-black px-1.5 py-0.2 rounded-full flex items-center gap-0.5">
-                          <span>👑</span> DÙNG
+                          <span>👑</span> {isVi ? 'DÙNG' : 'ACTIVE'}
                         </span>
                       ) : (
                         <span className="text-[#006A62] text-[8px] font-heading font-extrabold bg-[#2EC4B6]/15 px-1.5 py-0.2 rounded-full">
-                          ✓ MỞ
+                          {isVi ? '✓ MỞ' : '✓ UNLOCKED'}
                         </span>
                       )
                     ) : (
                       <span className="text-[#8D7168] text-[8px] font-heading font-bold bg-[#2D2926]/5 px-1.5 py-0.2 rounded-full">
-                        🔒 KHÓA
+                        {isVi ? '🔒 KHÓA' : '🔒 LOCKED'}
                       </span>
                     )}
                   </div>
@@ -964,7 +995,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
                         }`}
                       >
                         {title.completed
-                          ? '✓ Đã đạt'
+                          ? (isVi ? '✓ Đã đạt' : '✓ Achieved')
                           : `${title.progressCurrent}/${title.progressTotal}`}
                       </span>
                     </div>
@@ -1000,11 +1031,11 @@ export const PassportView: React.FC<PassportViewProps> = ({
                             : 'bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white shadow-2xs active:scale-95'
                         }`}
                       >
-                        {isEquipped ? '✓ Đang dùng' : '⚡ Trang bị'}
+                        {isEquipped ? (isVi ? '✓ Đang dùng' : '✓ Active') : (isVi ? '⚡ Trang bị' : '⚡ Equip')}
                       </button>
                     ) : (
                       <div className="text-[10px] font-heading font-bold text-[#FF6B35] flex items-center justify-center gap-0.5 py-0.5">
-                        <span>Săn ngay</span>
+                        <span>{isVi ? 'Săn ngay' : 'Hunt now'}</span>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
                       </div>
                     )}
@@ -1051,7 +1082,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
               <div className="absolute inset-0 bg-gradient-to-t from-[#2D2926]/75 via-transparent to-transparent flex items-end p-3.5">
                 <div className="flex items-center gap-1.5 text-white font-heading text-xs font-bold drop-shadow-sm">
                   <span className="material-symbols-outlined text-[16px] text-[#FF6B35] fill">location_on</span>
-                  <span>{activePassport.districtName}, Hà Nội</span>
+                  <span>{activePassport.districtName}, {isVi ? 'Hà Nội' : 'Hanoi'}</span>
                 </div>
               </div>
             </div>
@@ -1059,12 +1090,12 @@ export const PassportView: React.FC<PassportViewProps> = ({
             {/* Passport Tag & Title */}
             <div className="flex flex-col gap-2">
               <div className="inline-flex items-center gap-1 bg-[#2EC4B6]/15 text-[#006A62] px-3 py-1 rounded-full text-xs font-heading font-bold w-fit">
-                <span>🗺️</span> Hành trình khu vực
+                <span>🗺️</span> {isVi ? 'Hành trình khu vực' : 'District Journey'}
               </div>
 
               <div>
                 <h2 className="font-heading text-xl font-black text-[#2D2926]">
-                  Hành trình {activePassport.districtName}
+                  {isVi ? `Hành trình ${activePassport.districtName}` : `${activePassport.districtName} Journey`}
                 </h2>
                 <p className="text-xs text-[#594139] flex items-center gap-1 mt-0.5">
                   <span>{activePassport.subtitle}</span>
@@ -1101,9 +1132,9 @@ export const PassportView: React.FC<PassportViewProps> = ({
           {/* Challenges Section */}
           <div className="flex flex-col gap-3">
             <div className="flex justify-between items-center px-1">
-              <h3 className="font-heading text-base font-bold text-[#2D2926]">Thử thách thực địa</h3>
+              <h3 className="font-heading text-base font-bold text-[#2D2926]">{isVi ? 'Thử thách thực địa' : 'Field Challenges'}</h3>
               <span className="bg-[#FF6B35]/15 text-[#FF6B35] px-3 py-1 rounded-full text-xs font-heading font-bold">
-                {completedCount} / {totalCount} hoàn thành
+                {completedCount} / {totalCount} {isVi ? 'hoàn thành' : 'completed'}
               </span>
             </div>
 
@@ -1151,7 +1182,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
                       {ch.title}
                     </h4>
                     <p className="text-[11px] text-[#594139]/80 truncate">
-                      {ch.isCompleted ? ch.completedAt : `Thưởng +${ch.rewardXp} XP • Nhấn để check-in`}
+                      {ch.isCompleted ? ch.completedAt : `${isVi ? 'Thưởng' : 'Reward'} +${ch.rewardXp} XP • ${isVi ? 'Nhấn để check-in' : 'Tap to check-in'}`}
                     </p>
                   </div>
 
@@ -1170,7 +1201,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
               className="w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white py-3.5 rounded-full font-heading text-sm font-bold shadow-lg shadow-[#FF6B35]/30 flex items-center justify-center gap-2 active:scale-98 transition-transform cursor-pointer"
               id="btn-passport-unlock-next"
             >
-              <span>Đi mở khóa thử thách tiếp theo</span>
+              <span>{isVi ? 'Đi mở khóa thử thách tiếp theo' : 'Unlock next food challenge'}</span>
               <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
             </button>
           </div>
@@ -1189,17 +1220,17 @@ export const PassportView: React.FC<PassportViewProps> = ({
               </div>
               <div>
                 <h3 className="font-heading text-sm font-bold text-[#2D2926] leading-tight">
-                  Kiến thức khám phá
+                  {isVi ? 'Kiến thức khám phá' : 'Knowledge Quests'}
                 </h3>
                 <p className="text-[11px] text-[#594139]">
-                  Tình huống thực tế & Mở khóa Huy hiệu Kỹ Năng
+                  {isVi ? 'Tình huống thực tế & Mở khóa Huy hiệu Kỹ Năng' : 'Real-world scenarios & unlock Skill Badges'}
                 </p>
               </div>
             </div>
 
             {isBothCompleted ? (
               <span className="bg-[#FF6B35]/15 text-[#FF6B35] px-2.5 py-1 rounded-full text-[10px] font-heading font-extrabold flex items-center gap-1 shrink-0">
-                <span>🏆</span> Sành Sỏi
+                <span>🏆</span> {isVi ? 'Sành Sỏi' : 'Connoisseur'}
               </span>
             ) : (
               <span className="bg-[#2EC4B6]/12 text-[#006A62] px-2.5 py-0.5 rounded-full text-[10px] font-heading font-bold shrink-0">
@@ -1233,19 +1264,19 @@ export const PassportView: React.FC<PassportViewProps> = ({
                     </span>
                     {smartBiterProgress?.completed ? (
                       <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full">
-                        Đã mở khóa ✨
+                        {isVi ? 'Đã mở khóa ✨' : 'Unlocked ✨'}
                       </span>
                     ) : (
                       <span className="bg-[#594139]/10 text-[#594139] text-[9px] font-heading font-medium px-1.5 py-0.2 rounded-full">
-                        {smartBiterProgress?.bestScore ? `${smartBiterProgress.bestScore}/5` : 'Chưa mở'}
+                        {smartBiterProgress?.bestScore ? `${smartBiterProgress.bestScore}/5` : (isVi ? 'Chưa mở' : 'Locked')}
                       </span>
                     )}
                   </div>
                   <h4 className="font-heading text-xs font-bold text-[#2D2926] truncate">
-                    Ăn Tỉnh Táo
+                    {isVi ? 'Ăn Tỉnh Táo' : 'Smart Biter & Price Clarity'}
                   </h4>
                   <p className="text-[11px] text-[#594139] line-clamp-1 mt-0.5">
-                    Minh bạch giá cả, đối chiếu hóa đơn & bằng chứng thực tế
+                    {isVi ? 'Minh bạch giá cả, đối chiếu hóa đơn & bằng chứng thực tế' : 'Price transparency, receipt verification & authentic proof'}
                   </p>
                 </div>
               </div>
@@ -1258,7 +1289,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
                       : 'bg-[#FF6B35] text-white shadow-xs'
                   }`}
                 >
-                  <span>{smartBiterProgress?.completed ? 'Luyện tập' : 'Bắt đầu'}</span>
+                  <span>{smartBiterProgress?.completed ? (isVi ? 'Luyện tập' : 'Practice') : (isVi ? 'Bắt đầu' : 'Start')}</span>
                   <span className="material-symbols-outlined text-[14px]">
                     {smartBiterProgress?.completed ? 'refresh' : 'arrow_forward'}
                   </span>
@@ -1290,19 +1321,19 @@ export const PassportView: React.FC<PassportViewProps> = ({
                     </span>
                     {biteGuardianProgress?.completed ? (
                       <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full">
-                        Đã mở khóa ✨
+                        {isVi ? 'Đã mở khóa ✨' : 'Unlocked ✨'}
                       </span>
                     ) : (
                       <span className="bg-[#594139]/10 text-[#594139] text-[9px] font-heading font-medium px-1.5 py-0.2 rounded-full">
-                        {biteGuardianProgress?.bestScore ? `${biteGuardianProgress.bestScore}/5` : 'Chưa mở'}
+                        {biteGuardianProgress?.bestScore ? `${biteGuardianProgress.bestScore}/5` : (isVi ? 'Chưa mở' : 'Locked')}
                       </span>
                     )}
                   </div>
                   <h4 className="font-heading text-xs font-bold text-[#2D2926] truncate">
-                    Người Khám Phá Có Trách Nhiệm
+                    {isVi ? 'Người Khám Phá Có Trách Nhiệm' : 'Responsible Food Explorer'}
                   </h4>
                   <p className="text-[11px] text-[#594139] line-clamp-1 mt-0.5">
-                    Xác minh độc lập, tôn trọng quyền riêng tư & an toàn cộng đồng
+                    {isVi ? 'Xác minh độc lập, tôn trọng quyền riêng tư & an toàn cộng đồng' : 'Independent verification, privacy respect & community trust'}
                   </p>
                 </div>
               </div>
@@ -1315,7 +1346,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
                       : 'bg-[#FF6B35] text-white shadow-xs'
                   }`}
                 >
-                  <span>{biteGuardianProgress?.completed ? 'Luyện tập' : 'Bắt đầu'}</span>
+                  <span>{biteGuardianProgress?.completed ? (isVi ? 'Luyện tập' : 'Practice') : (isVi ? 'Bắt đầu' : 'Start')}</span>
                   <span className="material-symbols-outlined text-[14px]">
                     {biteGuardianProgress?.completed ? 'refresh' : 'arrow_forward'}
                   </span>
@@ -1376,14 +1407,14 @@ export const PassportView: React.FC<PassportViewProps> = ({
             {/* FOMO Stat Callout */}
             <div className="w-full bg-[#2D2926]/5 rounded-2xl p-3 flex items-center justify-around text-center border border-[#2D2926]/8">
               <div>
-                <span className="text-[10px] font-heading text-[#8D7168] block">Độ Hiếm</span>
+                <span className="text-[10px] font-heading text-[#8D7168] block">{isVi ? 'Độ Hiếm' : 'Rarity'}</span>
                 <span className="font-heading text-xs font-black text-amber-600">
                   {selectedTitleModal.fomoStat}
                 </span>
               </div>
               <div className="h-6 w-px bg-[#2D2926]/10" />
               <div>
-                <span className="text-[10px] font-heading text-[#8D7168] block">Thưởng XP</span>
+                <span className="text-[10px] font-heading text-[#8D7168] block">{isVi ? 'Thưởng XP' : 'XP Reward'}</span>
                 <span className="font-heading text-xs font-black text-[#2EC4B6]">
                   +{selectedTitleModal.rewardXp} XP
                 </span>
@@ -1393,7 +1424,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
             {/* Unlock Condition Box */}
             <div className="w-full bg-white rounded-2xl p-3.5 text-left border border-[#2D2926]/8 space-y-2">
               <span className="text-[11px] font-heading font-bold text-[#2D2926] block">
-                Điều kiện mở khóa:
+                {isVi ? 'Điều kiện mở khóa:' : 'Unlock Condition:'}
               </span>
               <p className="text-xs text-[#594139]">
                 {selectedTitleModal.conditionDesc}
@@ -1402,9 +1433,9 @@ export const PassportView: React.FC<PassportViewProps> = ({
               {/* Progress */}
               <div className="pt-1.5 space-y-1">
                 <div className="flex justify-between text-[10px] font-heading font-bold">
-                  <span className="text-[#8D7168]">Tiến trình hiện tại:</span>
+                  <span className="text-[#8D7168]">{isVi ? 'Tiến trình hiện tại:' : 'Current Progress:'}</span>
                   <span className={selectedTitleModal.completed ? 'text-[#2EC4B6]' : 'text-[#FF6B35]'}>
-                    {selectedTitleModal.completed ? 'ĐÃ HOÀN TẤT ✨' : `${selectedTitleModal.progressCurrent}/${selectedTitleModal.progressTotal}`}
+                    {selectedTitleModal.completed ? (isVi ? 'ĐÃ HOÀN TẤT ✨' : 'COMPLETED ✨') : `${selectedTitleModal.progressCurrent}/${selectedTitleModal.progressTotal}`}
                   </span>
                 </div>
                 <div className="h-2 w-full bg-[#E9E8E4] rounded-full overflow-hidden">
@@ -1422,7 +1453,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
               {/* Perks List */}
               <div className="pt-2 border-t border-[#2D2926]/8">
                 <span className="text-[10px] font-heading font-bold text-[#8D7168] block mb-1">
-                  Đặc quyền khi sở hữu:
+                  {isVi ? 'Đặc quyền khi sở hữu:' : 'Perks upon unlocking:'}
                 </span>
                 <ul className="text-[11px] text-[#594139] space-y-1">
                   {selectedTitleModal.perks.map((perk, i) => (
@@ -1449,8 +1480,8 @@ export const PassportView: React.FC<PassportViewProps> = ({
                   <span className="text-sm">👑</span>
                   <span>
                     {user?.activeTitle === selectedTitleModal.titleName
-                      ? 'Đang sử dụng danh hiệu này'
-                      : 'Trang bị làm danh hiệu chính'}
+                      ? (isVi ? 'Đang sử dụng danh hiệu này' : 'Currently equipped')
+                      : (isVi ? 'Trang bị làm danh hiệu chính' : 'Equip as active title')}
                   </span>
                 </button>
               ) : (
@@ -1463,7 +1494,7 @@ export const PassportView: React.FC<PassportViewProps> = ({
                   className="w-full bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white py-3 rounded-2xl font-heading text-xs font-black shadow-lg shadow-[#FF6B35]/30 flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
                 >
                   <span className="text-sm">🚀</span>
-                  <span>Bắt đầu săn danh hiệu ngay!</span>
+                  <span>{isVi ? 'Bắt đầu săn danh hiệu ngay!' : 'Start hunting this title now!'}</span>
                 </button>
               )}
             </div>

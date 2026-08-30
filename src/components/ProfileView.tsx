@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { User, AchievementBadge, AchievementRarity } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { LanguageToggle } from './LanguageToggle';
 
 interface ProfileViewProps {
   user: User;
@@ -40,6 +42,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   isLoggedIn = false,
   isSigningIn = false,
 }) => {
+  const { isVi, t } = useLanguage();
   const [showTitleSelector, setShowTitleSelector] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<AchievementBadge | null>(null);
   const [activeTabFilter, setActiveTabFilter] = useState<'all' | 'hunting' | 'unlocked'>('all');
@@ -149,7 +152,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               className="text-[11px] font-heading font-semibold text-[#594139] bg-[#F4F4F0] hover:bg-[#EFEEEA] px-2.5 py-1 rounded-full border border-[#2D2926]/10 flex items-center gap-1 active:scale-95 transition-all"
             >
               <span className="material-symbols-outlined text-[14px]">logout</span>
-              Đăng xuất
+              {t('logOut')}
             </button>
           ) : (
             <button
@@ -163,12 +166,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               {isSigningIn ? (
                 <>
                   <span className="material-symbols-outlined text-[13px] animate-spin">progress_activity</span>
-                  <span>Đang kết nối...</span>
+                  <span>{isVi ? 'Đang kết nối...' : 'Connecting...'}</span>
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-[14px]">login</span>
-                  <span>Đăng nhập</span>
+                  <span>{t('signIn')}</span>
                 </>
               )}
             </button>
@@ -203,7 +206,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             )}
             <span className="text-[10px] font-heading font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200/80 flex items-center gap-1">
               <span>🏆</span>
-              <span>TOP 5% Thợ Săn</span>
+              <span>{isVi ? 'TOP 5% Thợ Săn' : 'TOP 5% Food Hunter'}</span>
             </span>
           </div>
 
@@ -212,7 +215,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             type="button"
             onClick={() => setShowTitleSelector(!showTitleSelector)}
             className="inline-flex items-center gap-1.5 bg-[#FAF9F5] border border-[#2D2926]/10 text-[#2D2926] px-3.5 py-1.5 rounded-full text-xs font-heading font-bold mt-2.5 hover:bg-[#F4F4F0] active:scale-95 transition-all shadow-xs"
-            title="Nhấn để đổi danh hiệu"
+            title={isVi ? 'Nhấn để đổi danh hiệu' : 'Click to change title'}
           >
             <span>{user.activeTitle}</span>
             <span className="material-symbols-outlined text-[14px] text-neutral-500">expand_more</span>
@@ -223,7 +226,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="mt-3 p-3 bg-[#FAF9F5] rounded-2xl border border-[#2D2926]/10 flex flex-col gap-1.5 w-full max-w-xs animate-fade-in text-left shadow-lg">
               <div className="flex justify-between items-center px-1">
                 <span className="text-[11px] font-heading font-bold text-[#594139]">
-                  Chọn danh hiệu hiển thị:
+                  {isVi ? 'Chọn danh hiệu hiển thị:' : 'Select active title:'}
                 </span>
                 <button
                   type="button"
@@ -258,7 +261,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           <span>{a.emoji}</span>
                           <span>{a.title}</span>
                         </span>
-                        {isSelected && <span className="text-[10px] font-black">✓ ĐANG ĐEO</span>}
+                        {isSelected && <span className="text-[10px] font-black">{isVi ? '✓ ĐANG ĐEO' : '✓ EQUIPPED'}</span>}
                       </button>
                     );
                   })}
@@ -268,7 +271,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {justEquippedTitle && (
             <div className="mt-2 text-[11px] font-heading font-bold text-[#006A62] bg-[#2EC4B6]/15 px-3 py-1 rounded-full animate-fade-in">
-              ✦ Đã mang danh hiệu: {justEquippedTitle}
+              ✦ {isVi ? `Đã mang danh hiệu: ${justEquippedTitle}` : `Equipped title: ${justEquippedTitle}`}
             </div>
           )}
 
@@ -277,7 +280,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="flex justify-between text-xs font-heading text-[#594139]">
               <span className="font-bold flex items-center gap-1">
                 <span>🎖️</span>
-                <span>Bộ Sưu Tập Danh Hiệu</span>
+                <span>{isVi ? 'Bộ Sưu Tập Danh Hiệu' : 'Honor Titles & Badges'}</span>
               </span>
               <span className="font-bold text-[#FF6B35]">
                 {unlockedCount} / {totalCount} <span className="text-[#594139]/70 font-normal">({titlesPercent}%)</span>
@@ -294,13 +297,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {nextChaseBadge && (
               <div className="flex items-center justify-between text-[10px] font-heading text-[#594139] pt-1">
                 <span className="flex items-center gap-1 font-semibold">
-                  <span>🔥 Danh hiệu tiếp theo:</span>
+                  <span>🔥 {isVi ? 'Danh hiệu tiếp theo:' : 'Next title:'}</span>
                   <span className="text-[#2D2926] font-bold">{nextChaseBadge.title}</span>
                 </span>
                 <span className="text-[#FF6B35] font-bold">
                   {nextChaseBadge.target && nextChaseBadge.current !== undefined
-                    ? `Còn ${nextChaseBadge.target - nextChaseBadge.current} bước`
-                    : 'Gần rồi'}
+                    ? isVi
+                      ? `Còn ${nextChaseBadge.target - nextChaseBadge.current} bước`
+                      : `${nextChaseBadge.target - nextChaseBadge.current} steps left`
+                    : isVi
+                    ? 'Gần rồi'
+                    : 'Almost there'}
                 </span>
               </div>
             )}
@@ -318,13 +325,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <span className="text-lg">🏆</span>
                 <div className="text-left">
                   <span className="text-[11px] font-heading font-black text-[#2D2926] block leading-tight">
-                    Bảng Xếp Hạng Đua Top
+                    {isVi ? 'Bảng Xếp Hạng Đua Top' : 'Foodie Leaderboard'}
                   </span>
-                  <span className="text-[9px] text-[#8D7168]">Mùa 1: Thực Thần Hà Nội</span>
+                  <span className="text-[9px] text-[#8D7168]">
+                    {isVi ? 'Mùa 1: Thực Thần Hà Nội' : 'Season 1: Hanoi Gourmet Quest'}
+                  </span>
                 </div>
               </div>
               <span className="text-xs font-heading font-black text-[#FF6B35] flex items-center gap-0.5">
-                Xem Top →
+                {isVi ? 'Xem Top →' : 'View Top →'}
               </span>
             </button>
           )}
@@ -345,10 +354,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="flex items-center justify-between mb-3 relative z-10">
             <span className="text-[11px] font-heading font-black tracking-wider text-[#FF6B35] uppercase flex items-center gap-1.5">
               <span>🎯</span>
-              <span>Tiếp Theo Bạn Săn Gì?</span>
+              <span>{isVi ? 'Tiếp Theo Bạn Săn Gì?' : 'What to Hunt Next?'}</span>
             </span>
             <span className="text-[10px] font-mono font-bold bg-white/10 text-white/80 px-2 py-0.5 rounded-full">
-              Chỉ {nextChaseBadge.percentOwned || 7.8}% Thợ Săn sở hữu
+              {isVi
+                ? `Chỉ ${nextChaseBadge.percentOwned || 7.8}% Thợ Săn sở hữu`
+                : `Only ${nextChaseBadge.percentOwned || 7.8}% hunters own this`}
             </span>
           </div>
 
@@ -384,7 +395,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 onClick={onNavigateToExplore}
                 className="bg-[#FF6B35] hover:bg-[#FF6B35]/90 active:scale-95 text-white text-xs font-heading font-bold px-3 py-2 rounded-xl shadow-md flex items-center gap-1 shrink-0 transition-all"
               >
-                <span>Săn ngay</span>
+                <span>{isVi ? 'Săn ngay' : 'Hunt Now'}</span>
                 <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
               </button>
             )}
@@ -423,14 +434,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div>
             <h3 className="font-heading text-sm font-bold text-[#2D2926] flex items-center gap-1.5">
               <span className="text-base">🏆</span>
-              Danh Hiệu Thợ Săn BiteQuest
+              {isVi ? 'Danh Hiệu Thợ Săn BiteQuest' : 'BiteQuest Hunter Titles'}
             </h3>
             <p className="text-[11px] text-[#594139]/70 mt-0.5">
-              Khám phá, canh giờ vàng & chinh phục vị giác
+              {isVi ? 'Khám phá, canh giờ vàng & chinh phục vị giác' : 'Explore, catch peak times & conquer flavors'}
             </p>
           </div>
           <span className="text-xs font-heading font-bold text-[#FF6B35] bg-[#FF6B35]/10 px-2.5 py-0.5 rounded-full shrink-0">
-            {unlockedCount} / {totalCount} Đã Mở
+            {unlockedCount} / {totalCount} {isVi ? 'Đã Mở' : 'Unlocked'}
           </span>
         </div>
 
@@ -445,7 +456,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 : 'hover:text-[#2D2926]'
             }`}
           >
-            Tất cả ({totalCount})
+            {isVi ? `Tất cả (${totalCount})` : `All (${totalCount})`}
           </button>
           <button
             type="button"
@@ -456,7 +467,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 : 'hover:text-[#2D2926]'
             }`}
           >
-            Đang săn ({totalCount - unlockedCount})
+            {isVi ? `Đang săn (${totalCount - unlockedCount})` : `In Progress (${totalCount - unlockedCount})`}
           </button>
           <button
             type="button"
@@ -467,7 +478,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 : 'hover:text-[#2D2926]'
             }`}
           >
-            Đã mở ({unlockedCount})
+            {isVi ? `Đã mở (${unlockedCount})` : `Unlocked (${unlockedCount})`}
           </button>
         </div>
 
@@ -502,16 +513,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     isEquipped ? (
                       <span className="text-[8px] font-heading font-bold text-[#006A62] bg-[#2EC4B6]/15 px-1.5 py-0.2 rounded-full border border-[#2EC4B6]/30 flex items-center gap-0.5">
                         <span>✦</span>
-                        <span>Đeo</span>
+                        <span>{isVi ? 'Đeo' : 'Active'}</span>
                       </span>
                     ) : (
                       <span className="text-[8px] font-heading font-bold text-[#006A62] bg-[#2EC4B6]/15 px-1.5 py-0.2 rounded-full">
-                        ✓ Mở
+                        {isVi ? '✓ Mở' : '✓ Unlocked'}
                       </span>
                     )
                   ) : (
                     <span className="text-[8px] font-heading font-bold text-[#8D7168] bg-[#2D2926]/5 px-1.5 py-0.2 rounded-full">
-                      🔒 Khóa
+                      {isVi ? '🔒 Khóa' : '🔒 Locked'}
                     </span>
                   )}
                 </div>
@@ -541,16 +552,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </p>
 
                   <span className="text-[9px] text-[#8D7168] font-mono mt-0.5">
-                    Chỉ {badge.percentOwned || 7.8}% sở hữu
+                    {isVi ? `Chỉ ${badge.percentOwned || 7.8}% sở hữu` : `Only ${badge.percentOwned || 7.8}% owned`}
                   </span>
                 </div>
 
                 {/* Footer: Progress & Action */}
                 <div className="pt-2 border-t border-[#2D2926]/5 flex flex-col gap-1.5">
                   <div className="flex items-center justify-between text-[9px] font-heading">
-                    <span className="text-[#594139] font-medium">Tiến độ</span>
+                    <span className="text-[#594139] font-medium">{isVi ? 'Tiến độ' : 'Progress'}</span>
                     <span className="font-bold text-[#FF6B35]">
-                      {badge.isUnlocked ? '✓ Đã mở' : `${current}/${target}`}
+                      {badge.isUnlocked ? (isVi ? '✓ Đã mở' : '✓ Unlocked') : `${current}/${target}`}
                     </span>
                   </div>
 
@@ -564,7 +575,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   {badge.isUnlocked ? (
                     isEquipped ? (
                       <div className="w-full py-1 rounded-lg text-[10px] font-heading font-black text-center bg-amber-100 text-amber-900 border border-amber-300">
-                        ✓ Đang đeo
+                        {isVi ? '✓ Đang đeo' : '✓ Equipped'}
                       </div>
                     ) : (
                       <button
@@ -575,12 +586,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         }}
                         className="w-full py-1 rounded-lg text-[10px] font-heading font-bold text-center bg-[#FF6B35] text-white shadow-2xs hover:bg-[#FF6B35]/90 active:scale-95 transition-all"
                       >
-                        ⚡ Đeo danh hiệu
+                        {isVi ? '⚡ Đeo danh hiệu' : '⚡ Equip Title'}
                       </button>
                     )
                   ) : (
                     <div className="text-[10px] font-heading font-bold text-[#FF6B35] flex items-center justify-center gap-0.5 py-0.5">
-                      <span>Săn ngay</span>
+                      <span>{isVi ? 'Săn ngay' : 'Hunt Now'}</span>
                       <span className="material-symbols-outlined text-[12px]">chevron_right</span>
                     </div>
                   )}
@@ -627,14 +638,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </span>
                   </div>
                   <span className="text-[11px] text-neutral-500 font-mono block mt-0.5">
-                    Chỉ {selectedBadge.percentOwned || 7.8}% Thợ Săn sở hữu
+                    {isVi
+                      ? `Chỉ ${selectedBadge.percentOwned || 7.8}% Thợ Săn sở hữu`
+                      : `Only ${selectedBadge.percentOwned || 7.8}% hunters own this`}
                   </span>
                 </div>
               </div>
 
               <div className="bg-[#FAF9F5] p-3.5 rounded-2xl border border-[#2D2926]/5 text-xs text-[#594139] leading-relaxed">
                 <span className="font-heading font-bold text-[#2D2926] block mb-1">
-                  Điều kiện mở khóa:
+                  {isVi ? 'Điều kiện mở khóa:' : 'Unlock criteria:'}
                 </span>
                 {selectedBadge.description}
                 {selectedBadge.hint && !selectedBadge.isUnlocked && (
@@ -647,10 +660,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               {/* Progress */}
               <div className="space-y-1">
                 <div className="flex justify-between text-xs font-heading font-bold text-[#594139]">
-                  <span>Tiến độ</span>
+                  <span>{isVi ? 'Tiến độ' : 'Progress'}</span>
                   <span className="text-[#FF6B35]">
                     {selectedBadge.isUnlocked
-                      ? '100% (Hoàn tất)'
+                      ? (isVi ? '100% (Hoàn tất)' : '100% (Completed)')
                       : `${selectedBadge.current || 0} / ${selectedBadge.target || 1}`}
                   </span>
                 </div>
@@ -685,7 +698,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     className="w-full py-2.5 bg-[#2EC4B6] hover:bg-[#2EC4B6]/90 text-[#004D40] font-heading text-xs font-bold rounded-xl shadow-sm transition-all text-center flex items-center justify-center gap-1"
                   >
                     <span>✦</span>
-                    <span>Đeo danh hiệu này trên hồ sơ</span>
+                    <span>{isVi ? 'Đeo danh hiệu này trên hồ sơ' : 'Equip title on profile'}</span>
                   </button>
                 ) : (
                   <button
@@ -696,7 +709,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     }}
                     className="w-full py-2.5 bg-[#FF6B35] hover:bg-[#FF6B35]/90 text-white font-heading text-xs font-bold rounded-xl shadow-md transition-all text-center flex items-center justify-center gap-1"
                   >
-                    <span>Săn ngay trên bản đồ</span>
+                    <span>{isVi ? 'Săn ngay trên bản đồ' : 'Hunt now on map'}</span>
                     <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                   </button>
                 )}
@@ -713,7 +726,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="text-lg">✨</span>
-            <h3 className="font-heading text-sm font-bold text-[#2D2926]">Gu ẩm thực & Phong cách</h3>
+            <h3 className="font-heading text-sm font-bold text-[#2D2926]">
+              {isVi ? 'Gu ẩm thực & Phong cách' : 'Food Taste & Exploration Style'}
+            </h3>
           </div>
           {onOpenPersonalization && (
             <button
@@ -721,7 +736,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               onClick={onOpenPersonalization}
               className="text-[11px] font-heading font-bold text-[#FF6B35] hover:underline flex items-center gap-0.5"
             >
-              <span>Tuỳ chỉnh</span>
+              <span>{isVi ? 'Tuỳ chỉnh' : 'Customize'}</span>
               <span className="material-symbols-outlined text-[13px]">edit</span>
             </button>
           )}
@@ -730,7 +745,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div className="space-y-2.5">
           <div>
             <span className="text-[11px] font-heading font-semibold text-neutral-500 block mb-1.5">
-              Món ăn yêu thích:
+              {isVi ? 'Món ăn yêu thích:' : 'Favorite food tags:'}
             </span>
             {user.foodPreferences && user.foodPreferences.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
@@ -745,14 +760,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             ) : (
               <p className="text-xs text-neutral-400 font-sans italic">
-                Chưa chọn gu món ăn. Nhấn "Tuỳ chỉnh" để thiết lập.
+                {isVi
+                  ? 'Chưa chọn gu món ăn. Nhấn "Tuỳ chỉnh" để thiết lập.'
+                  : 'No preferences set yet. Tap "Customize" to configure.'}
               </p>
             )}
           </div>
 
           <div>
             <span className="text-[11px] font-heading font-semibold text-neutral-500 block mb-1.5">
-              Phong cách khám phá:
+              {isVi ? 'Phong cách khám phá:' : 'Discovery persona:'}
             </span>
             {user.explorationStyle ? (
               <span className="inline-block px-3 py-1 bg-[#2EC4B6]/15 text-[#006A62] text-xs font-heading font-bold rounded-xl">
@@ -760,7 +777,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </span>
             ) : (
               <p className="text-xs text-neutral-400 font-sans italic">
-                Chưa chọn phong cách.
+                {isVi ? 'Chưa chọn phong cách.' : 'No persona selected.'}
               </p>
             )}
           </div>
@@ -777,7 +794,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {user.stats.placesDiscovered}
           </span>
           <span className="text-[11px] font-heading font-medium text-[#594139] mt-1">
-            Quán đã ăn
+            {isVi ? 'Quán đã ăn' : 'Venues Visited'}
           </span>
         </div>
 
@@ -787,7 +804,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {user.stats.passportsCompleted}
           </span>
           <span className="text-[11px] font-heading font-medium text-[#594139] mt-1">
-            Hành trình xong
+            {isVi ? 'Hành trình xong' : 'Passports Done'}
           </span>
         </div>
 
@@ -797,7 +814,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {user.stats.firstBitesCount}
           </span>
           <span className="text-[11px] font-heading font-medium text-[#594139] mt-1">
-            First Bites
+            {isVi ? 'First Bites' : 'First Bites'}
           </span>
         </div>
       </section>
@@ -809,7 +826,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div className="flex items-center justify-between">
           <h3 className="font-heading text-sm font-bold text-[#2D2926] flex items-center gap-2">
             <span className="material-symbols-outlined text-[#FF6B35] text-[18px]">menu_book</span>
-            Hành Trình Khu Vực Đang Mở
+            {isVi ? 'Hành Trình Khu Vực Đang Mở' : 'Active District Journey'}
           </h3>
           {onNavigateToPassport && (
             <button
@@ -817,7 +834,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               onClick={onNavigateToPassport}
               className="text-xs font-heading font-bold text-[#FF6B35] hover:underline flex items-center gap-0.5"
             >
-              <span>Xem chi tiết</span>
+              <span>{isVi ? 'Xem chi tiết' : 'View Details'}</span>
               <span className="material-symbols-outlined text-[14px]">chevron_right</span>
             </button>
           )}
@@ -830,10 +847,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div>
               <h4 className="font-heading text-xs font-bold text-[#2D2926]">
-                Hành trình Cầu Giấy
+                {isVi ? 'Hành trình Cầu Giấy' : 'Cau Giay Food Journey'}
               </h4>
               <p className="text-[11px] text-[#594139]">
-                4 / 6 thử thách hoàn tất
+                {isVi ? '4 / 6 thử thách hoàn tất' : '4 / 6 quests completed'}
               </p>
             </div>
           </div>
@@ -855,28 +872,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       <section className="bg-white rounded-3xl p-5 shadow-[0_4px_20px_rgba(45,41,38,0.06)] border border-[#2D2926]/5 flex flex-col gap-3">
         <h3 className="font-heading text-sm font-bold text-[#2D2926] flex items-center gap-2">
           <span className="material-symbols-outlined text-[#2EC4B6] text-[18px]">verified</span>
-          Đóng Góp Cộng Đồng & Quán Ngõ
+          {isVi ? 'Đóng Góp Cộng Đồng & Quán Ngõ' : 'Community Contributions'}
         </h3>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="bg-[#FAF9F5] p-3 rounded-2xl border border-[#2D2926]/5">
             <span className="text-[10px] font-heading font-bold uppercase text-[#594139]/70 block">
-              Quán ngõ đề xuất
+              {isVi ? 'Quán ngõ đề xuất' : 'Alley Gems Proposed'}
             </span>
             <span className="font-heading text-lg font-black text-[#2D2926] block mt-0.5">
-              1 quán
+              {isVi ? '1 quán' : '1 spot'}
             </span>
-            <span className="text-[10px] text-[#006A62] font-semibold">Đã được cộng đồng duyệt</span>
+            <span className="text-[10px] text-[#006A62] font-semibold">
+              {isVi ? 'Đã được cộng đồng duyệt' : 'Community approved'}
+            </span>
           </div>
 
           <div className="bg-[#FAF9F5] p-3 rounded-2xl border border-[#2D2926]/5">
             <span className="text-[10px] font-heading font-bold uppercase text-[#594139]/70 block">
-              Xác minh độc lập
+              {isVi ? 'Xác minh độc lập' : 'Scout Verifications'}
             </span>
             <span className="font-heading text-lg font-black text-[#2D2926] block mt-0.5">
-              {user.stats.firstBitesCount} lượt
+              {isVi ? `${user.stats.firstBitesCount} lượt` : `${user.stats.firstBitesCount} times`}
             </span>
-            <span className="text-[10px] text-[#FF6B35] font-semibold">Scout Verifier chuẩn</span>
+            <span className="text-[10px] text-[#FF6B35] font-semibold">
+              {isVi ? 'Scout Verifier chuẩn' : 'Certified Scout Verifier'}
+            </span>
           </div>
         </div>
       </section>
@@ -884,12 +905,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {/* ========================================================= */}
       {/* SECTION 8: QUICK ACTIONS & PREFERENCES                    */}
       {/* ========================================================= */}
-      <section className="bg-white rounded-3xl p-4 shadow-[0_4px_20px_rgba(45,41,38,0.06)] border border-[#2D2926]/5 flex flex-col divide-y divide-[#2D2926]/5">
+      <section className="bg-white rounded-3xl p-4 shadow-[0_4px_20px_rgba(45,41,38,0.06)] border border-[#2D2926]/5 flex flex-col divide-y divide-[#2D2926]/5" id="profile-preferences-card">
         {onOpenBiteBot && (
           <button
             type="button"
             onClick={onOpenBiteBot}
             className="w-full py-3 px-2 flex items-center justify-between text-left hover:bg-[#FF6B35]/5 rounded-xl transition-all group"
+            id="profile-btn-bitebot"
           >
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#FF6B35] to-[#FFA07A] flex items-center justify-center text-white text-xs shadow-xs">
@@ -897,25 +919,62 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-heading text-xs font-bold text-[#FF6B35]">BiteBot - Trợ Lý Ẩm Thực AI</span>
-                  <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full">Gemini 3.7</span>
+                  <span className="font-heading text-xs font-bold text-[#FF6B35]">
+                    {isVi ? 'BiteBot - Trợ Lý Ẩm Thực AI' : 'BiteBot - AI Food Assistant'}
+                  </span>
+                  <span className="bg-[#2EC4B6]/20 text-[#006A62] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full">
+                    Gemini 3.7
+                  </span>
                 </div>
-                <p className="text-[11px] text-[#8D7168] mt-0.5">Tư vấn món ngon, quán cafe, ngân sách thông minh</p>
+                <p className="text-[11px] text-[#8D7168] mt-0.5">
+                  {isVi ? 'Tư vấn món ngon, quán cafe, ngân sách thông minh' : 'Smart recommendations for food, cafes, and budgets'}
+                </p>
               </div>
             </div>
-            <span className="material-symbols-outlined text-[#FF6B35] text-[18px] group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+            <span className="material-symbols-outlined text-[#FF6B35] text-[18px] group-hover:translate-x-0.5 transition-transform">
+              chevron_right
+            </span>
           </button>
         )}
+
+        {/* Chế độ Ngôn ngữ / Language Mode Setting */}
+        <div
+          className="w-full py-3 px-2 flex items-center justify-between hover:bg-[#FAF9F5] rounded-xl transition-all"
+          id="profile-language-setting-row"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-[#FF6B35]/10 flex items-center justify-center text-[#FF6B35]">
+              <span className="material-symbols-outlined text-[19px]">translate</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-heading text-xs font-bold text-[#2D2926]">
+                  {isVi ? 'Ngôn Ngữ Ứng Dụng' : 'App Language'}
+                </span>
+                <span className="bg-[#FF6B35]/15 text-[#FF6B35] text-[9px] font-heading font-black px-1.5 py-0.2 rounded-full">
+                  {isVi ? 'VI 🇻🇳' : 'EN 🇬🇧'}
+                </span>
+              </div>
+              <p className="text-[11px] text-[#8D7168] mt-0.5">
+                {isVi ? 'Tiếng Việt · English song ngữ ẩm thực' : 'Vietnamese · English culinary mode'}
+              </p>
+            </div>
+          </div>
+          <LanguageToggle variant="pill" />
+        </div>
 
         {onNavigateToFriends && (
           <button
             type="button"
             onClick={onNavigateToFriends}
             className="w-full py-3 px-2 flex items-center justify-between text-left hover:bg-[#FAF9F5] rounded-xl transition-all"
+            id="profile-btn-history"
           >
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-[#FF6B35] text-[20px]">history</span>
-              <span className="font-heading text-xs font-bold text-[#2D2926]">Lịch Sử Dấu Bite Của Bạn</span>
+              <span className="font-heading text-xs font-bold text-[#2D2926]">
+                {isVi ? 'Lịch Sử Dấu Bite Của Bạn' : 'Your Bite History'}
+              </span>
             </div>
             <span className="material-symbols-outlined text-[#594139]/50 text-[18px]">chevron_right</span>
           </button>
@@ -926,10 +985,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             type="button"
             onClick={onOpenKnowledge}
             className="w-full py-3 px-2 flex items-center justify-between text-left hover:bg-[#FAF9F5] rounded-xl transition-all"
+            id="profile-btn-knowledge"
           >
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-[#2EC4B6] text-[20px]">quiz</span>
-              <span className="font-heading text-xs font-bold text-[#2D2926]">Thử Thách Tri Thức Ẩm Thực</span>
+              <span className="font-heading text-xs font-bold text-[#2D2926]">
+                {isVi ? 'Thử Thách Tri Thức Ẩm Thực' : 'Culinary Trivia Quiz'}
+              </span>
             </div>
             <span className="material-symbols-outlined text-[#594139]/50 text-[18px]">chevron_right</span>
           </button>
@@ -940,10 +1002,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             type="button"
             onClick={onOpenAbout}
             className="w-full py-3 px-2 flex items-center justify-between text-left hover:bg-[#FAF9F5] rounded-xl transition-all"
+            id="profile-btn-about"
           >
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-[#594139] text-[20px]">info</span>
-              <span className="font-heading text-xs font-bold text-[#2D2926]">Về BiteQuest Vietnam</span>
+              <span className="font-heading text-xs font-bold text-[#2D2926]">
+                {isVi ? 'Về BiteQuest Vietnam' : 'About BiteQuest Vietnam'}
+              </span>
             </div>
             <span className="material-symbols-outlined text-[#594139]/50 text-[18px]">chevron_right</span>
           </button>
@@ -954,6 +1019,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             type="button"
             onClick={onOpenJudgeDev}
             className="w-full py-3 px-2 flex items-center justify-between text-left hover:bg-[#FAF9F5] rounded-xl transition-all"
+            id="profile-btn-dev-console"
           >
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-[#006A62] text-[20px]">terminal</span>

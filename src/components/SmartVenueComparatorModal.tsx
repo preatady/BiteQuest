@@ -225,7 +225,7 @@ export const SmartVenueComparatorModal: React.FC<SmartVenueComparatorModalProps>
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
+      className="fixed inset-0 z-[999] bg-black/65 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
       onClick={onClose}
       id="smart-venue-comparator-modal"
     >

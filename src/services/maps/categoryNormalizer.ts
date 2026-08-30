@@ -331,26 +331,26 @@ export function classifyVenue(venueInput: {
     return { category: 'HOTPOT', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
 
-  // BBQ (Nướng)
+  // BBQ (Nướng / Quay)
   if (
-    /(?:^|[\s,./\-_(])(nuong|bbq|barbecue|grill|yakiniku|gogi|king\s+bbq|sumo\s+bbq|bo\s+nuong|thit\s+nuong|chan\s+ga\s+nuong)(?:$|[\s,./\-_)])/i.test(normName) ||
-    /(?:^|[\s,./\-_(])(nướng)(?:$|[\s,./\-_)])/i.test(name)
+    /(?:^|[\s,./\-_(])(nuong|bbq|barbecue|grill|yakiniku|gogi|king\s+bbq|sumo\s+bbq|bo\s+nuong|thit\s+nuong|chan\s+ga\s+nuong|vit\s+quay|heo\s+quay|ga\s+nuong|nem\s+nuong|long\s+nuong)(?:$|[\s,./\-_)])/i.test(normName) ||
+    /(?:^|[\s,./\-_(])(nướng|vịt quay|heo quay|nem nướng)(?:$|[\s,./\-_)])/i.test(name)
   ) {
     return { category: 'BBQ', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
 
-  // RICE (Cơm / Xôi)
+  // RICE (Cơm / Xôi / Cháo / Bánh cuốn / Bánh xèo)
   if (
-    /(?:^|[\s,./\-_(])(com|com\s+tam|com\s+rang|com\s+ga|com\s+nieu|com\s+van\s+phong|com\s+suon|com\s+binh\s+dan|xoi)(?:$|[\s,./\-_)])/i.test(normName) ||
-    /(?:^|[\s,./\-_(])(cơm|xôi)(?:$|[\s,./\-_)])/i.test(name)
+    /(?:^|[\s,./\-_(])(com|com\s+tam|com\s+rang|com\s+ga|com\s+nieu|com\s+van\s+phong|com\s+suon|com\s+binh\s+dan|xoi|chao|chao\s+long|chao\s+ech|banh\s+cuon|banh\s+xeo|banh\s+can|banh\s+khot|banh\s+beo)(?:$|[\s,./\-_)])/i.test(normName) ||
+    /(?:^|[\s,./\-_(])(cơm|xôi|cháo|bánh cuốn|bánh xèo)(?:$|[\s,./\-_)])/i.test(name)
   ) {
     return { category: 'RICE', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
 
-  // CAFE_DRINK (Cà phê & Trà)
+  // CAFE_DRINK (Cà phê & Trà & Sinh tố & Nước giải khát)
   if (
-    /(?:^|[\s,./\-_(])(cafe|cafe|coffee|ca\s+phe|caphe|tra|tea|tra\s+sua|milktea|milk\s+tea|matcha|espresso|highlands|starbucks|phuc\s+long|the\s+coffee\s+house|aha\s+cafe|katinat|cong\s+caphe|gemini|all\s+day\s+coffee|coffe|phe\s+la|zamia|tam\s+hoa\s+tra)(?:$|[\s,./\-_)])/i.test(normName) ||
-    /(?:^|[\s,./\-_(])(cà phê|trà sữa|trà)(?:$|[\s,./\-_)])/i.test(name)
+    /(?:^|[\s,./\-_(])(cafe|cafe|coffee|ca\s+phe|caphe|tra|tea|tra\s+sua|milktea|milk\s+tea|matcha|espresso|highlands|starbucks|phuc\s+long|the\s+coffee\s+house|aha\s+cafe|katinat|cong\s+caphe|gemini|all\s+day\s+coffee|coffe|phe\s+la|zamia|tam\s+hoa\s+tra|tra\s+chanh|sinh\s+to|nuoc\s+mia|nuoc\s+ep|sua\s+chua|tau\s+hu|quan\s+nuoc)(?:$|[\s,./\-_)])/i.test(normName) ||
+    /(?:^|[\s,./\-_(])(cà phê|trà sữa|trà|trà chanh|sinh tố|nước mía|nước ép|sữa chua|tàu hũ)(?:$|[\s,./\-_)])/i.test(name)
   ) {
     return { category: 'CAFE_DRINK', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
@@ -408,9 +408,9 @@ export function classifyVenue(venueInput: {
 
   // 4. Generic Fallback (Priority 4)
   if (
-    /(?:^|[\s,./\-_(])(nha\s+hang|quan\s+an|restaurant|bep|kitchen|diner|quan)(?:$|[\s,./\-_)])/i.test(normName) ||
+    /(?:^|[\s,./\-_(])(nha\s+hang|quan\s+an|restaurant|bep|kitchen|diner|quan|tiem|am\s+thuc|dac\s+san|hai\s+san|oc|ga|vit|bo|de|nem|cha|an\s+uong|an\s+vat|cang\s+tin|canteen|bistro|quan\s+nhau)(?:$|[\s,./\-_)])/i.test(normName) ||
     rawCat === 'restaurant' ||
-    rawList.some((c) => c.includes('restaurant') || c.includes('food_court'))
+    rawList.some((c) => c.includes('restaurant') || c.includes('food_court') || c.includes('catering'))
   ) {
     return { category: 'RESTAURANT', source: 'GENERIC_FALLBACK', confidence: 0.50 };
   }

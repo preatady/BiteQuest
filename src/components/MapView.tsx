@@ -52,7 +52,6 @@ import {
 } from '../services/maps/vectorTileScanner';
 import { generateFogOfWarGeoJSON } from '../services/maps/fogOfWarHelper';
 import { FogOfWarHUD } from './FogOfWarHUD';
-import { FomoLiveTicker } from './FomoLiveTicker';
 import { MysteryDropModal } from './MysteryDropModal';
 import { BiteRouletteModal } from './BiteRouletteModal';
 import { TrafficSmartNavigatorSheet } from './TrafficSmartNavigatorSheet';
@@ -210,39 +209,30 @@ const clusterCountLayer: any = {
   },
 };
 
-// Medium/Close Zoom category icon symbol layer - Clean Level of Detail scaling with collision detection
+// Medium/Close Zoom category icon symbol layer - Firmly anchored across all zoom levels
 const unclusteredCategoryIconLayer: any = {
   id: 'unclustered-category-icon',
   type: 'symbol',
   source: 'background-pois',
-  minzoom: 12.8,
   layout: {
-    'icon-image': ['coalesce', ['get', 'iconName'], 'icon-other_food-unvisited'],
+    'icon-image': ['coalesce', ['get', 'iconName'], 'pin-grey-normal'],
     'icon-size': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      12.8,
-      0.72,
-      14.5,
-      0.92,
-      16.5,
-      1.1,
+      'case',
+      ['==', ['get', 'isHot'], 1],
+      0.88,
+      ['==', ['get', 'isVisited'], 1],
+      0.82,
+      0.75,
     ],
-    'icon-allow-overlap': false,
-    'icon-ignore-placement': false,
-    'icon-padding': 8,
+    'icon-anchor': 'bottom',
+    'icon-allow-overlap': true,
+    'icon-ignore-placement': true,
+    'icon-pitch-alignment': 'viewport',
+    'icon-rotation-alignment': 'viewport',
+    'icon-padding': 0,
   },
   paint: {
-    'icon-opacity': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      12.8,
-      0.65,
-      14,
-      0.95,
-    ],
+    'icon-opacity': 0.95,
   },
 };
 
@@ -251,23 +241,14 @@ const ambientVenueLabelLayer: any = {
   id: 'ambient-venue-labels',
   type: 'symbol',
   source: 'background-pois',
-  minzoom: 14.2,
   layout: {
     'text-field': ['get', 'name'],
-    'text-font': ['Noto Sans Regular'],
-    'text-size': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      14.2,
-      10.5,
-      16,
-      12.5,
-    ],
-    'text-offset': [0, 1.3],
+    'text-font': ['Noto Sans Bold'],
+    'text-size': 10.5,
+    'text-offset': [0, 0.35],
     'text-anchor': 'top',
-    'text-max-width': 9.5,
-    'text-padding': 4,
+    'text-max-width': 8.5,
+    'text-padding': 2,
     'text-optional': true,
     'text-allow-overlap': false,
     'text-ignore-placement': false,
@@ -279,45 +260,40 @@ const ambientVenueLabelLayer: any = {
       '#065F46',
       ['==', ['get', 'isHot'], 1],
       '#C2410C',
-      '#44403C',
+      '#292524',
     ],
     'text-halo-color': '#FFFFFF',
     'text-halo-width': 2.5,
     'text-halo-blur': 0.5,
-    'text-opacity': [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      14.2,
-      0.8,
-      15.5,
-      1.0,
-    ],
+    'text-opacity': 0.95,
   },
 };
 
-// Promoted / Curated BiteQuest places native WebGL symbol layers
+// Promoted / Curated BiteQuest places native WebGL symbol layers - Guaranteed anchored & visible at all zoom levels
 const promotedPlacesIconLayer: any = {
   id: 'promoted-places-icons',
   type: 'symbol',
   source: 'promoted-places-source',
   layout: {
-    'icon-image': ['coalesce', ['get', 'iconName'], 'icon-other_food-unvisited'],
+    'icon-image': ['coalesce', ['get', 'iconName'], 'pin-grey-normal'],
     'icon-size': [
       'case',
       ['==', ['get', 'isMatched'], 0],
       0,
       ['==', ['get', 'isTopRecommended'], 1],
-      1.1,
+      1.05,
       ['==', ['get', 'isQuest'], 1],
       0.95,
       ['==', ['get', 'isHot'], 1],
       0.9,
       0.8,
     ],
+    'icon-anchor': 'bottom',
     'icon-allow-overlap': true,
     'icon-ignore-placement': true,
-    'icon-padding': 6,
+    'icon-pitch-alignment': 'viewport',
+    'icon-rotation-alignment': 'viewport',
+    'icon-padding': 0,
   },
   paint: {
     'icon-opacity': [
@@ -325,7 +301,7 @@ const promotedPlacesIconLayer: any = {
       ['==', ['get', 'isMatched'], 0],
       0,
       ['==', ['get', 'isDimmed'], 1],
-      0.25,
+      0.35,
       0.95,
     ],
   },
@@ -335,15 +311,14 @@ const promotedPlacesLabelLayer: any = {
   id: 'promoted-places-labels',
   type: 'symbol',
   source: 'promoted-places-source',
-  minzoom: 14.0,
   layout: {
     'text-field': ['get', 'name'],
     'text-font': ['Noto Sans Bold'],
     'text-size': 11,
-    'text-offset': [0, 1.25],
+    'text-offset': [0, 0.35],
     'text-anchor': 'top',
     'text-max-width': 8.5,
-    'text-padding': 6,
+    'text-padding': 2,
     'text-optional': true,
     'text-allow-overlap': false,
     'text-ignore-placement': false,
@@ -353,7 +328,14 @@ const promotedPlacesLabelLayer: any = {
     'text-halo-color': '#FFFFFF',
     'text-halo-width': 2.5,
     'text-halo-blur': 0.5,
-    'text-opacity': 0.9,
+    'text-opacity': [
+      'case',
+      ['==', ['get', 'isMatched'], 0],
+      0,
+      ['==', ['get', 'isDimmed'], 1],
+      0.35,
+      0.95,
+    ],
   },
 };
 
@@ -402,6 +384,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [selectedTrafficRoute, setSelectedTrafficRoute] = useState<TrafficRouteResult | null>(null);
   const [showComparatorModal, setShowComparatorModal] = useState(false);
   const [showHolidayEventModal, setShowHolidayEventModal] = useState(false);
+  const [showFullFilterSheet, setShowFullFilterSheet] = useState(false);
   const [comparatorInitialVenues, setComparatorInitialVenues] = useState<(Place | UnifiedPlace)[]>([]);
   const [currentZoom, setCurrentZoom] = useState<number>(14.5);
   const mapRef = useRef<MapRef | null>(null);
@@ -497,10 +480,31 @@ export const MapView: React.FC<MapViewProps> = ({
   });
   const [viewportRadius, setViewportRadius] = useState<number>(2500);
   const [isPioneerBannerDismissed, setIsPioneerBannerDismissed] = useState<boolean>(false);
+  const [isScanningMap, setIsScanningMap] = useState<boolean>(true);
   const [isAreaSearching, setIsAreaSearching] = useState<boolean>(false);
   const [areaSearchLoadedCount, setAreaSearchLoadedCount] = useState<number | null>(null);
   const [isStyleFallbackActive, setIsStyleFallbackActive] = useState<boolean>(false);
   const moveEndDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const scanningTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper to trigger temporary scanning feedback on significant shifts
+  const triggerScanningFeedback = useCallback((durationMs: number = 1200) => {
+    setIsScanningMap(true);
+    if (scanningTimerRef.current) clearTimeout(scanningTimerRef.current);
+    scanningTimerRef.current = setTimeout(() => {
+      setIsScanningMap(false);
+    }, durationMs);
+  }, []);
+
+  // Initial mount scanning indicator for 1200ms
+  useEffect(() => {
+    scanningTimerRef.current = setTimeout(() => {
+      setIsScanningMap(false);
+    }, 1200);
+    return () => {
+      if (scanningTimerRef.current) clearTimeout(scanningTimerRef.current);
+    };
+  }, []);
 
   // Helper to calculate the viewport frame radius (distance from center to visible bounds)
   const calculateViewportRadius = useCallback((): number => {
@@ -522,6 +526,17 @@ export const MapView: React.FC<MapViewProps> = ({
   }, []);
 
   const isVenueSelected = Boolean(selectedPlace || selectedBackgroundPOI);
+  const isAnyOverlayActive = Boolean(
+    selectedPlace ||
+    selectedBackgroundPOI ||
+    selectedTrafficRoute ||
+    showFullFilterSheet ||
+    showMysteryDrop ||
+    showRoulette ||
+    showTrafficSheet ||
+    showComparatorModal ||
+    showHolidayEventModal
+  );
   const mapConfig = useMemo(() => getMapLibreConfig(), []);
 
   // Re-register custom category icons whenever style changes (street <-> satellite)
@@ -908,8 +923,6 @@ export const MapView: React.FC<MapViewProps> = ({
     return map;
   }, [radarOpportunities]);
 
-  const [showFullFilterSheet, setShowFullFilterSheet] = useState(false);
-
   const quickFilterChips = useMemo(() => {
     return computeQuickFilterChips(allLoadedVenues, activeCategoryFilter);
   }, [allLoadedVenues, activeCategoryFilter]);
@@ -971,11 +984,11 @@ export const MapView: React.FC<MapViewProps> = ({
         features: [],
       };
     }
-    // Hard slice to maximum 40 items for instant 60fps rendering
+    // Render all valid POIs within active radius & category
     const validPOIs = filteredUnpromotedNearbyPOIs.filter(
       (poi) => poi && typeof poi.latitude === 'number' && typeof poi.longitude === 'number'
     );
-    const dataToRender = validPOIs.slice(0, 40);
+    const dataToRender = validPOIs;
 
     return {
       type: 'FeatureCollection',
@@ -1072,10 +1085,9 @@ export const MapView: React.FC<MapViewProps> = ({
     const topRecommendationId = todayOpportunities.length > 0 ? todayOpportunities[0].venueId : null;
     const isFilterOrSearchActive = activeCategoryFilter !== 'ALL' || Boolean(searchQuery.trim());
 
-    // EMERGENCY DEMO-DAY HACK: Limit rendered places to top 30 items maximum to ensure instant 60fps
+    // Render all verified & promoted places matching filters
     const dataToRender = filteredPlaces
-      .filter((place) => place && place.id !== activeSelectedPlace?.id)
-      .slice(0, 30);
+      .filter((place) => place && place.id !== activeSelectedPlace?.id);
 
     return {
       type: 'FeatureCollection',
@@ -1155,6 +1167,21 @@ export const MapView: React.FC<MapViewProps> = ({
     todayOpportunities,
     exploreMode,
   ]);
+
+  // Optimized GeoJSON source sync with stringified cache to prevent unnecessary map re-renders/stutters (Bug 4)
+  const lastPromotedPlacesGeoJSONStringRef = useRef<string>('');
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const source: any = map.getSource('promoted-places-source');
+    if (!source || typeof source.setData !== 'function') return;
+
+    const currentString = JSON.stringify(promotedPlacesGeoJSON);
+    if (currentString !== lastPromotedPlacesGeoJSONStringRef.current) {
+      lastPromotedPlacesGeoJSONStringRef.current = currentString;
+      source.setData(promotedPlacesGeoJSON);
+    }
+  }, [promotedPlacesGeoJSON]);
 
   // Filtered radar opportunities for the bottom carousel
   const displayedOpportunities = useMemo(() => {
@@ -1422,10 +1449,13 @@ export const MapView: React.FC<MapViewProps> = ({
         clearTimeout(moveEndDebounceRef.current);
       }
 
-      // Debounce panning fetch to 600ms and require at least 800m movement to prevent rapid request floods & lag
+      // Debounce panning fetch to 400ms and check movement to prevent request floods
       moveEndDebounceRef.current = setTimeout(() => {
         const dist = lastFetchedCenter ? getDistance(lastFetchedCenter, newCenter) : Infinity;
-        if (dist > 800) {
+        if (dist > 1200) {
+          triggerScanningFeedback(1000);
+        }
+        if (dist > 400) {
           fetchNearbyPOIs(newCenter, Math.max(newRadius, 5000), {
             anchor: {
               latitude: referenceLocation.latitude,
@@ -1434,9 +1464,9 @@ export const MapView: React.FC<MapViewProps> = ({
             },
           });
         }
-      }, 600);
+      }, 400);
     },
-    [calculateViewportRadius, lastFetchedCenter, referenceLocation, hasRealLocation, fetchNearbyPOIs, addDiscoveredPOIs]
+    [calculateViewportRadius, lastFetchedCenter, referenceLocation, hasRealLocation, fetchNearbyPOIs, addDiscoveredPOIs, triggerScanningFeedback]
   );
 
   // Clean up debounce on unmount
@@ -1451,6 +1481,7 @@ export const MapView: React.FC<MapViewProps> = ({
   // Re-center button click: pans to user GPS if available, else re-prompts geolocation
   const handleMyLocationClick = () => {
     setIsLocating(true);
+    triggerScanningFeedback(1200);
     setGeoStatusMessage('Đang kết nối GPS chính xác của bạn...');
 
     if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
@@ -1591,8 +1622,8 @@ export const MapView: React.FC<MapViewProps> = ({
             type="geojson"
             data={backgroundPOIGeoJSON}
             cluster={true}
-            clusterMaxZoom={12.5}
-            clusterRadius={36}
+            clusterMaxZoom={11}
+            clusterRadius={28}
           >
             <Layer {...clusterLayer} />
             <Layer {...clusterCountLayer} />
@@ -1785,6 +1816,34 @@ export const MapView: React.FC<MapViewProps> = ({
         </MapGL>
       </div>
 
+      {/* 0. Scanning Area Overlay (Instant Feedback on Mount & Map Pan) */}
+      {isScanningMap && (
+        <div
+          className="absolute inset-0 z-40 bg-stone-900/25 backdrop-blur-[2px] flex items-center justify-center pointer-events-none transition-opacity duration-300 animate-fade-in"
+          id="map-scanning-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="bg-white/95 backdrop-blur-md px-5 py-3.5 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.18)] border border-stone-200/90 flex items-center gap-3.5 max-w-[340px] mx-4 animate-scale-in">
+            <div className="relative w-10 h-10 shrink-0 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-orange-500/20 animate-ping" />
+              <div className="absolute inset-0.5 rounded-full bg-orange-500/30 animate-pulse" />
+              <div className="relative w-8 h-8 rounded-full bg-[#EA580C] text-white flex items-center justify-center shadow-md">
+                <span className="material-symbols-outlined text-[18px] animate-spin">radar</span>
+              </div>
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-heading text-xs sm:text-sm font-bold text-stone-900 leading-tight">
+                Đang quét địa điểm trong khu vực...
+              </span>
+              <span className="text-[10.5px] text-stone-500 truncate font-sans">
+                BiteQuest Radar • Đồng bộ bản đồ ẩm thực
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TOP EXPLORE CONTROLS (GOOGLE MAPS STYLE SEARCH & FOOD NAVIGATION) */}
       <div className="absolute top-[calc(4.5rem+env(safe-area-inset-top,0px))] left-3.5 right-3.5 md:left-1/2 md:-translate-x-1/2 md:w-[520px] z-30 pointer-events-auto flex flex-col gap-2">
         {/* Google Maps-Style Interactive Search Bar */}
@@ -1896,6 +1955,7 @@ export const MapView: React.FC<MapViewProps> = ({
         !isFilterActive &&
         !isVenueSelected &&
         !isPioneerBannerDismissed &&
+        !isAnyOverlayActive &&
         !isLoadingPOIs && (
           <div
             className="absolute bottom-24 md:bottom-22 left-1/2 -translate-x-1/2 z-20 pointer-events-auto bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-full shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-stone-200/90 flex items-center gap-2 max-w-[92vw] sm:max-w-md animate-fade-in"
@@ -1951,7 +2011,7 @@ export const MapView: React.FC<MapViewProps> = ({
       {/* 4B. Full Filter Bottom Sheet / Modal */}
       {showFullFilterSheet && (
         <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
+          className="fixed inset-0 z-[999] bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
           onClick={() => setShowFullFilterSheet(false)}
         >
           <div
@@ -2052,12 +2112,16 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* 5. Floating Map Controls (Quiet & Distinctive Floating Dock) */}
-      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex flex-col gap-2.5 z-20 pointer-events-auto items-end">
-        {/* 🔥 Contextual Hot Event Bonfire (Đống Lửa Lễ 2/9) */}
+      {/* 5. Floating Map Controls (Right-side Smart Dock) */}
+      <div
+        className={`absolute right-3.5 sm:right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2.5 z-20 pointer-events-auto items-end transition-opacity duration-200 ${
+          isAnyOverlayActive ? 'opacity-0 pointer-events-none sm:opacity-100 sm:pointer-events-auto' : 'opacity-100'
+        }`}
+      >
+        {/* 🔥 Contextual Hot Event Bonfire (Đống Lửa Lễ 2/9 nguyên bản) */}
         <BonfireEventButton onClick={() => setShowHolidayEventModal(true)} />
 
-        {/* Signature Interaction: 🎲 Hôm nay ăn gì? (Tactile, Delightful Trigger) */}
+        {/* Signature Interaction: 🎲 Hôm nay ăn gì? (Bite Roulette) */}
         <button
           type="button"
           onClick={() => setShowRoulette(true)}
@@ -2219,52 +2283,23 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         </div>
 
-        {/* Zoom Controls & Re-Center GPS Cluster */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_4px_16px_rgba(45,41,38,0.12)] border border-stone-200/90 p-1 flex flex-col items-center gap-1">
-          {/* Zoom In */}
-          <button
-            type="button"
-            onClick={() => mapRef.current?.zoomIn()}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-stone-700 hover:bg-stone-100 hover:text-stone-950 font-bold active:scale-95 transition-all cursor-pointer select-none text-base"
-            title="Phóng to bản đồ"
-            aria-label="Phóng to"
+        {/* Standalone Re-Center GPS Button (Đã bỏ nút + và - theo yêu cầu) */}
+        <button
+          type="button"
+          onClick={handleMyLocationClick}
+          className="w-10 h-10 rounded-2xl bg-white/95 backdrop-blur-md shadow-[0_4px_18px_rgba(45,41,38,0.12)] border border-stone-200/90 flex items-center justify-center text-stone-800 hover:bg-stone-50 active:scale-95 transition-all cursor-pointer"
+          title={hasRealLocation ? 'Vị trí của bạn' : 'Định vị GPS'}
+          id="btn-my-location"
+          aria-label="Định vị GPS"
+        >
+          <span
+            className={`material-symbols-outlined text-[20px] ${
+              hasRealLocation ? 'text-[#FF6B35]' : 'text-stone-500'
+            }`}
           >
-            +
-          </button>
-          
-          <div className="w-5 h-[1px] bg-stone-200/80" />
-
-          {/* Zoom Out */}
-          <button
-            type="button"
-            onClick={() => mapRef.current?.zoomOut()}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-stone-700 hover:bg-stone-100 hover:text-stone-950 font-bold active:scale-95 transition-all cursor-pointer select-none text-base"
-            title="Thu nhỏ bản đồ"
-            aria-label="Thu nhỏ"
-          >
-            −
-          </button>
-
-          <div className="w-5 h-[1px] bg-stone-200/80" />
-
-          {/* Re-Center GPS Button */}
-          <button
-            type="button"
-            onClick={handleMyLocationClick}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-stone-800 hover:bg-stone-100 active:scale-95 transition-all cursor-pointer"
-            title={hasRealLocation ? 'Vị trí của bạn' : 'Định vị GPS'}
-            id="btn-my-location"
-            aria-label="Định vị GPS"
-          >
-            <span
-              className={`material-symbols-outlined text-[19px] ${
-                hasRealLocation ? 'text-[#FF6B35]' : 'text-stone-500'
-              }`}
-            >
-              my_location
-            </span>
-          </button>
-        </div>
+            my_location
+          </span>
+        </button>
       </div>
 
       {/* Fog of War Interactive HUD Overlay */}
@@ -2280,30 +2315,9 @@ export const MapView: React.FC<MapViewProps> = ({
 
 
 
-      {/* 6b. Live Activity Floating Toast (Bottom-Left Smart Placement - Minimal & Non-intrusive) */}
-      {!activePlace && !selectedBackgroundPOI && !isRadarOpen && !showFullFilterSheet && (
-        <div className="absolute bottom-20 sm:bottom-6 left-3.5 sm:left-4 z-20 pointer-events-auto max-w-[340px] sm:max-w-md animate-fade-in">
-          <FomoLiveTicker
-            places={allLoadedVenues.length > 0 ? (allLoadedVenues as Place[]) : places}
-            onSelectPlaceByCoords={(lat, lng, placeId) => {
-              handleFlyTo(lat, lng, 16.5);
-              if (placeId) {
-                const match =
-                  places.find((p) => p.id === placeId) ||
-                  allLoadedVenues.find((v: any) => v.id === placeId);
-                if (match) {
-                  onSelectPlace(match as Place);
-                }
-              }
-            }}
-            onOpenMysteryDrop={() => setShowMysteryDrop(true)}
-            onOpenTrafficSheet={() => setShowTrafficSheet(true)}
-          />
-        </div>
-      )}
 
       {/* 6c. Bottom Opportunity Carousel (Rendered when Radar destination/tab is active) */}
-      {!activePlace && !selectedBackgroundPOI && isRadarOpen && displayedOpportunities.length > 0 && (
+      {!activePlace && !selectedBackgroundPOI && !isAnyOverlayActive && isRadarOpen && displayedOpportunities.length > 0 && (
         <div className="absolute bottom-22 left-0 right-0 z-30 pointer-events-none">
           <OpportunityCarousel
             opportunities={displayedOpportunities}

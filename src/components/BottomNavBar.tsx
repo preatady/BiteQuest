@@ -1,5 +1,6 @@
 import React from 'react';
 import { TabType } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 export type { TabType };
 
 interface BottomNavBarProps {
@@ -17,6 +18,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   onTabChange,
   isNearActiveVenue = false,
 }) => {
+  const { t, isVi } = useLanguage();
+
   return (
     <nav
       className="fixed bottom-0 left-0 w-full z-40 bg-[#FDFCF8]/95 backdrop-blur-xl rounded-t-3xl shadow-[0_-6px_28px_rgba(45,41,38,0.09)] border-t border-[#2D2926]/8 pb-[max(0.65rem,env(safe-area-inset-bottom))]"
@@ -50,7 +53,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             </span>
           </div>
           <span className="text-[10px] sm:text-[11px] font-heading mt-0.5 tracking-tight whitespace-nowrap">
-            Khám phá
+            {t('tabExplore')}
           </span>
         </button>
 
@@ -80,7 +83,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             </span>
           </div>
           <span className="text-[10px] sm:text-[11px] font-heading mt-0.5 tracking-tight whitespace-nowrap">
-            Bản tin
+            {t('tabFriends')}
           </span>
         </button>
 
@@ -93,8 +96,8 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
               activeTab === 'camera' ? 'ring-[#FF6B35]/30 scale-105 shadow-[0_8px_24px_rgba(255,107,53,0.45)]' : ''
             }`}
             id="tab-camera-fab"
-            title="Chụp Bite - Check in quán ăn"
-            aria-label="Chụp Bite"
+            title={isVi ? 'Chụp Bite - Check in quán ăn' : 'Bite Cam - Photo Check-in'}
+            aria-label={t('tabCamera')}
           >
             <span className="material-symbols-outlined text-[28px] sm:text-[30px] fill">photo_camera</span>
             {isNearActiveVenue && (
@@ -102,11 +105,11 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             )}
           </button>
           <span className="text-[10px] sm:text-[11px] font-heading font-extrabold text-[#FF6B35] mt-0.5 tracking-tight whitespace-nowrap">
-            Chụp Bite
+            {t('tabCamera')}
           </span>
         </div>
 
-        {/* 4. Journey (Hành trình) */}
+        {/* 4. Journey (Hành trình / Passport) */}
         <button
           type="button"
           onClick={() => onTabChange('passport')}
@@ -132,7 +135,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             </span>
           </div>
           <span className="text-[10px] sm:text-[11px] font-heading mt-0.5 tracking-tight whitespace-nowrap">
-            Hành trình
+            {t('tabPassport')}
           </span>
         </button>
 
@@ -162,13 +165,14 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             </span>
           </div>
           <span className="text-[10px] sm:text-[11px] font-heading mt-0.5 tracking-tight whitespace-nowrap">
-            Hồ sơ
+            {t('tabProfile')}
           </span>
         </button>
       </div>
     </nav>
   );
 };
+
 
 
 

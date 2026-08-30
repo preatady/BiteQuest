@@ -221,18 +221,40 @@ export function isFoodOrVenueFeature(properties: any, layerId?: string): boolean
   }
 
   // Exact whole-phrase or word-bounded regex for Vietnamese food & beverage venues
-  // Ensures short words like 'quan' only match 'quán' (food place) and NOT 'quân đội' or 'cơ quan'
+  // Covers any venue named with dining prefixes (Quán, Tiệm, Bếp, Lò, Nhà hàng, Ẩm thực, Đặc sản, Ăn vặt, etc.)
+  // and all Vietnamese & international dishes, ingredients, drinks, and snacks
   const vietnameseFoodNamePatterns = [
-    /(?:^|[\s,./\-_(])(?:coffee|cafe|café|cà\s+phê|caphe)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:quán\s+ăn|nhà\s+hàng|tiệm\s+ăn|quán\s+cơm|quán\s+bún|quán\s+phở|quán\s+lẩu|quán\s+nướng|quán\s+nhậu|quán\s+chè|quán\s+ốc|quán\s+bia)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:quan\s+an|nha\s+hang|tiem\s+an|quan\s+com|quan\s+bun|quan\s+pho|quan\s+lau|quan\s+nuong|quan\s+nhau|quan\s+che|quan\s+oc|quan\s+bia)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:bánh\s+mì|banh\s+mi|bánh\s+ngọt|tiệm\s+bánh|tiem\s+banh|bakery)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:phở|pho\s+|bún|bun\s+|miến|mien\s+|mì\s+|hủ\s+tiếu|hu\s+tieu)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:cơm\s+tấm|cơm\s+niêu|cơm\s+chay|com\s+tam|com\s+nieu|cơm\s+bình\s+dân|cơm\s+rang)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:lẩu|lau\s+|nướng|nuong\s+|bbq|dimsum|pizza|burger|sushi|steak|doner|kebab)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:trà\s+sữa|tra\s+sua|trà\s+chanh|tra\s+chanh|sữa\s+chua|kem\s+|gelato|chè\s+|che\s+sầu)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:cháo\s+|chao\s+|xôi\s+|xoi\s+|hải\s+sản|hai\s+san|nước\s+mía|sinh\s+tố|bò\s+kho|nem\s+nướng|chả\s+cá)(?:$|[\s,./\-_)])/i,
-    /(?:^|[\s,./\-_(])(?:bia\s+hơi|bia\s+tươi|craft\s+beer|vuvuzela)(?:$|[\s,./\-_)])/i,
+    // 1. Food and dining establishment prefixes
+    /(?:^|[\s,./\-_(])(?:quán|quan|tiệm|tiem|bếp|bep|lò|lo|nhà\s+hàng|nha\s+hang|ẩm\s+thực|am\s+thuc|đặc\s+sản|dac\s+san|ăn\s+vặt|an\s+vat|quán\s+ăn|quan\s+an|tiệm\s+ăn|tiem\s+an|nhà\s+ăn|nha\s+an|căng\s+tin|cang\s+tin|canteen|bistro|diner|eatery|kitchen|quán\s+nhậu|quan\s+nhau|nhậu|nhau|quán\s+cơm|quan\s+com|quán\s+nước|quan\s+nuoc|quán\s+bia|quan\s+bia|quán\s+ốc|quan\s+oc|quán\s+chè|quan\s+che)(?:$|[\s,./\-_)])/i,
+    
+    // 2. Coffee, tea, milk tea, juices, drinks, ice cream & desserts
+    /(?:^|[\s,./\-_(])(?:coffee|cafe|café|cà\s+phê|caphe|trà|tra|trà\s+sữa|tra\s+sua|milktea|milk\s+tea|trà\s+chanh|tra\s+chanh|trà\s+đào|tra\s+dao|matcha|sinh\s+tố|sinh\s+to|nước\s+mía|nuoc\s+mia|nước\s+ép|nuoc\s+ep|nước\s+dừa|nuoc\s+dua|sữa\s+chua|sua\s+chua|kem|gelato|ice\s+cream|chè|che|che\s+sầu|tàu\s+hũ|tau\s+hu|đậu\s+hũ|dau\s+hu)(?:$|[\s,./\-_)])/i,
+    
+    // 3. Bakery, bread & pastries
+    /(?:^|[\s,./\-_(])(?:bánh\s+mì|banh\s+mi|bánh\s+ngọt|banh\s+ngot|tiệm\s+bánh|tiem\s+banh|bánh\s+kem|banh\s+kem|bánh\s+sinh\s+nhật|bakery|patisserie|pastry|cake|croissant|donut|bánh\s+bao|banh\s+bao|bánh\s+gối|banh\s+goi|bánh\s+bột\s+lọc|bánh\s+tráng|banh\s+trang)(?:$|[\s,./\-_)])/i,
+    
+    // 4. Noodles, soups & broths
+    /(?:^|[\s,./\-_(])(?:phở|pho\s+|bún|bun\s+|miến|mien\s+|mì\s+|my\s+|hủ\s+tiếu|hu\s+tieu|bánh\s+canh|banh\s+canh|bánh\s+đa|banh\s+da|mì\s+vằn\s+thắn|mì\s+quảng|mì\s+cay|bún\s+bò|bún\s+chả|bún\s+đậu|bún\s+riêu|bún\s+thang|bún\s+cá|bún\s+ốc|bún\s+mọc|bún\s+ngan|ramen|udon|soba)(?:$|[\s,./\-_)])/i,
+    
+    // 5. Rice dishes, porridge & sticky rice
+    /(?:^|[\s,./\-_(])(?:cơm|com|cơm\s+tấm|com\s+tam|cơm\s+niêu|com\s+nieu|cơm\s+chay|com\s+chay|cơm\s+bình\s+dân|com\s+binh\s+dan|cơm\s+rang|com\s+rang|cơm\s+gà|com\s+ga|cơm\s+sườn|cháo|chao|cháo\s+lòng|cháo\s+ếch|cháo\s+vịt|cháo\s+gà|xôi|xoi|xôi\s+xéo|xôi\s+bắp|xôi\s+gà|bánh\s+cuốn|banh\s+cuon|bánh\s+xèo|banh\s+xeo|bánh\s+căn|bánh\s+khọt|bánh\s+bèo)(?:$|[\s,./\-_)])/i,
+    
+    // 6. Hotpot, BBQ, grills & meat/poultry specialties
+    /(?:^|[\s,./\-_(])(?:lẩu|lau\s+|nướng|nuong\s+|bbq|barbecue|grill|yakiniku|buffet|bò|bo|bò\s+tơ|bò\s+né|bò\s+nướng|bò\s+sốt\s+vang|bít\s+tết|steak|gà|ga|gà\s+rán|gà\s+nướng|gà\s+tần|gà\s+tươi|vịt|vit|vịt\s+quay|vịt\s+nướng|vịt\s+cỏ|ngan|chim|dê|de|lẩu\s+dê|thịt\s+dê|bê\s+thui|heo\s+quay|thịt\s+nướng|lòng\s+nướng|lòng\s+rán)(?:$|[\s,./\-_)])/i,
+    
+    // 7. Seafood, snail, rolls, sausage & specialties
+    /(?:^|[\s,./\-_(])(?:hải\s+sản|hai\s+san|ốc|oc|ốc\s+luộc|ốc\s+xào|hàu|nghêu|sò|tôm|cua|mực|cá|cá\s+lăng|chả\s+cá|nem|nem\s+nướng|nem\s+chua|nem\s+lụi|nem\s+rán|chả|chả\s+mực|chả\s+rươi|chả\s+quế|gỏi|goi|nộm|nom|ếch|ech|lươn|luon)(?:$|[\s,./\-_)])/i,
+    
+    // 8. International, Fast Food & Western
+    /(?:^|[\s,./\-_(])(?:pizza|burger|hamburger|sandwich|pasta|spaghetti|sushi|sashimi|dimsum|dim\s+sum|tokbokki|topokki|kimbap|doner|kebab|taco|kfc|lotteria|jollibee|mcdonald)(?:$|[\s,./\-_)])/i,
+    
+    // 9. Beer, Pubs & Bars
+    /(?:^|[\s,./\-_(])(?:bia|beer|bia\s+hơi|bia\s+hoi|bia\s+tươi|bia\s+tuoi|craft\s+beer|vuvuzela|bar|pub|lounge)(?:$|[\s,./\-_)])/i,
+    
+    // 10. Vegetarian
+    /(?:^|[\s,./\-_(])(?:chay|vegan|vegetarian|thực\s+dưỡng|thuc\s+duong)(?:$|[\s,./\-_)])/i,
+    
+    // 11. Supermarket, convenience store, food market
     /(?:^|[\s,./\-_(])(?:siêu\s+thị|sieu\s+thi|bách\s+hóa|bach\s+hoa|bách\s+hóa\s+xanh|cửa\s+hàng\s+tiện\s+lợi|winmart|vinmart|circle\s+k|gs25|7\s*eleven|seven\s+eleven|familymart|ministop|coopmart|co\.?op\s*mart|big\s+c|go!?|lotte\s+mart|aeon|mega\s+market|brg\s+mart|fuji\s+mart|hapro\s+mart|chợ\s+ẩm\s+thực|food\s+market)(?:$|[\s,./\-_)])/i,
   ];
 

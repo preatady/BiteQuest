@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../context/LanguageContext';
 
 interface TopAppBarProps {
   districtName?: string;
@@ -17,6 +18,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
   onOpenNotifications,
   onOpenBiteBot,
 }) => {
+  const { t, isVi } = useLanguage();
   const displayXp = typeof xp === 'number' ? xp : 0;
 
   return (
@@ -29,9 +31,9 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         <button
           onClick={onOpenMenu}
           className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 flex items-center justify-center rounded-full hover:bg-[#2D2926]/6 text-[#2D2926] active:scale-95 transition-all cursor-pointer"
-          title="Menu mở rộng"
+          title={t('menuExtended')}
           id="btn-top-menu"
-          aria-label="Mở menu"
+          aria-label={t('openMenu')}
         >
           <span className="material-symbols-outlined text-[22px] sm:text-[24px]">menu</span>
         </button>
@@ -67,7 +69,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
             type="button"
             onClick={onOpenBiteBot}
             className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-[#FF6B35]/12 to-[#2EC4B6]/12 hover:from-[#FF6B35]/20 hover:to-[#2EC4B6]/20 border border-[#FF6B35]/20 text-[#2D2926] active:scale-95 transition-all cursor-pointer shadow-2xs"
-            title="Hỏi Trợ lý Ẩm thực AI BiteBot"
+            title={isVi ? 'Hỏi Trợ lý Ẩm thực AI BiteBot' : 'Ask BiteBot AI Food Assistant'}
             id="btn-top-bitebot"
           >
             <span className="text-xs sm:text-sm animate-pulse">✨</span>
@@ -80,10 +82,10 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         {/* Compact Gamified XP Badge */}
         <div
           className="flex items-center gap-1 bg-[#FF6B35]/10 border border-[#FF6B35]/15 text-[#FF6B35] px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold font-heading whitespace-nowrap shadow-2xs"
-          title={`Điểm kinh nghiệm: ${displayXp.toLocaleString('vi-VN')} XP`}
+          title={`${t('xpTitle')}: ${displayXp.toLocaleString(isVi ? 'vi-VN' : 'en-US')} XP`}
         >
           <span className="text-[11px]">⚡</span>
-          <span>{displayXp.toLocaleString('vi-VN')}</span>
+          <span>{displayXp.toLocaleString(isVi ? 'vi-VN' : 'en-US')}</span>
           <span className="text-[9px] opacity-80 uppercase tracking-tighter">XP</span>
         </div>
 
@@ -91,9 +93,9 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         <button
           onClick={onOpenNotifications}
           className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full hover:bg-[#2D2926]/6 text-[#2D2926] active:scale-95 transition-all relative shrink-0 cursor-pointer"
-          title="Thông báo"
+          title={t('notificationsTitle')}
           id="btn-top-notifications"
-          aria-label="Xem thông báo"
+          aria-label={t('notificationsTitle')}
         >
           <span className="material-symbols-outlined text-[22px] sm:text-[24px]">notifications</span>
           {unreadCount > 0 && (
@@ -106,4 +108,5 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
     </header>
   );
 };
+
 

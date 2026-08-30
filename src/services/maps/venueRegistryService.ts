@@ -12,6 +12,7 @@ import { PlaceProvider, UnifiedPlace } from './types';
 import { GeoapifyPlaceProvider } from './geoapify/geoapifyPlaces';
 import { Place, BiteCheckin } from '../../types';
 import { INITIAL_PLACES } from '../../data/seedData';
+import { TRI_REGION_VENUES } from '../../data/triRegionVenues';
 import { classifyVenue, CANONICAL_CATEGORIES } from './categoryNormalizer';
 
 // Constants
@@ -46,9 +47,16 @@ export class VenueRegistryService {
     if (primaryProvider) this.primaryProvider = primaryProvider;
     if (firestoreDb) this.firestoreDb = firestoreDb;
 
-    // Pre-hydrate all authentic curated places into memory spatial index
+    // Pre-hydrate curated directory places into memory spatial index
     for (const p of INITIAL_PLACES) {
       this.registerPlace(p);
+    }
+
+    // Pre-hydrate tri-region venues (Hanoi, Central, South) for 100% instant local discovery
+    for (const v of TRI_REGION_VENUES) {
+      if (typeof v.latitude === 'number' && typeof v.longitude === 'number') {
+        this.upsertCandidatePOI(v, v.provider || 'bitequest_tri_region');
+      }
     }
   }
 

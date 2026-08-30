@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { getDistance } from 'geolib';
 import { Place } from '../types';
 import { UnifiedPlace } from '../services/maps/types';
@@ -14,13 +15,20 @@ import {
   filterPlacesBySearchIntent,
   SearchIntent,
   isNaturalLanguageQuery,
+  localIntentParser,
 } from '../services/searchIntentService';
 import {
   getSmartTypeaheadSuggestions,
   executeSmartSearch,
   SmartDecisionState,
 } from '../services/smartSearchDecisionEngine';
+import {
+  TrafficRouteResult,
+  analyzeTrafficRoutes,
+} from '../services/maps/trafficSmartRoutingService';
+import { generateLocalExplanationFallback } from '../services/decisionExplanationService';
 import { SmartDecisionCard } from './SmartDecisionCard';
+import { useLanguage } from '../context/LanguageContext';
 
 export { parseSearchIntentWithGemini };
 
@@ -358,20 +366,34 @@ export const HANOI_DISCOVERY_LOCATIONS = VIETNAM_DISCOVERY_LOCATIONS;
 
 export interface MockIntentResult {
   category: 'cafe' | 'hotpot' | 'noodle' | 'bbq' | 'fast_food' | 'rice' | 'all';
-  tag?: 'quiet' | 'dry_route' | 'aesthetic' | 'tasty_noodles' | 'spicy_noodle' | 'crispy_fast_food' | 'grilled_bbq' | string;
+  tag?: 'quiet' | 'dry_route' | 'aesthetic' | 'tasty_noodles' | 'spicy_noodle' | 'crispy_fast_food' | 'grilled_bbq' | 'hearty_rice' | string;
+  targetTime?: number | null;
+  cleanKeyword?: string;
 }
 
 /**
- * Instant Mock Intent Search Analyzer (Smoke & Mirrors for Demo)
+ * Instant Mock Intent Search Analyzer (Client-side NLP Fallback)
  * Analyzes natural language search query instantly on client-side with 0ms latency.
  */
 export function mockAnalyzeIntent(query: string): MockIntentResult {
+  const parsed = localIntentParser(query);
   const raw = (query || '').toLowerCase().trim();
   const norm = normalizeVietnameseText(raw);
-  if (!raw) return { category: 'all' };
+  if (!raw) return { category: 'all', targetTime: null, cleanKeyword: '' };
 
-  // 1. Mì cay, mì, bún, phở, miến, hủ tiếu, ramen
+  // 1. Cơm
+  if (parsed.category === 'rice' || raw.includes('cơm') || norm.includes('com') || raw.includes('rice')) {
+    return {
+      category: 'rice',
+      tag: 'hearty_rice',
+      targetTime: parsed.targetTime,
+      cleanKeyword: parsed.cleanKeyword,
+    };
+  }
+
+  // 2. Mì cay, mì, bún, phở, miến, hủ tiếu, ramen
   if (
+    parsed.category === 'noodle' ||
     raw.includes('mì cay') ||
     norm.includes('mi cay') ||
     raw.includes('mì') ||
@@ -387,10 +409,15 @@ export function mockAnalyzeIntent(query: string): MockIntentResult {
     norm.includes('mien') ||
     raw.includes('ramen')
   ) {
-    return { category: 'noodle', tag: raw.includes('mì cay') || norm.includes('mi cay') ? 'spicy_noodle' : 'tasty_noodles' };
+    return {
+      category: 'noodle',
+      tag: raw.includes('mì cay') || norm.includes('mi cay') ? 'spicy_noodle' : 'tasty_noodles',
+      targetTime: parsed.targetTime,
+      cleanKeyword: parsed.cleanKeyword,
+    };
   }
 
-  // 2. If query includes "học" or "làm việc" or "yên tĩnh"
+  // 3. If query includes "học" or "làm việc" or "yên tĩnh"
   if (
     raw.includes('học') ||
     norm.includes('hoc') ||
@@ -399,11 +426,17 @@ export function mockAnalyzeIntent(query: string): MockIntentResult {
     raw.includes('yên tĩnh') ||
     norm.includes('yen tinh')
   ) {
-    return { category: 'cafe', tag: 'quiet' };
+    return {
+      category: 'cafe',
+      tag: 'quiet',
+      targetTime: parsed.targetTime,
+      cleanKeyword: parsed.cleanKeyword,
+    };
   }
 
-  // 3. Cafe / Cà phê / Trà
+  // 4. Cafe / Cà phê / Trà
   if (
+    parsed.category === 'cafe_drink' ||
     raw.includes('cafe') ||
     raw.includes('cà phê') ||
     norm.includes('ca phe') ||
@@ -413,11 +446,17 @@ export function mockAnalyzeIntent(query: string): MockIntentResult {
     norm.endsWith('tra') ||
     raw.includes('tea')
   ) {
-    return { category: 'cafe', tag: 'quiet' };
+    return {
+      category: 'cafe',
+      tag: 'quiet',
+      targetTime: parsed.targetTime,
+      cleanKeyword: parsed.cleanKeyword,
+    };
   }
 
-  // 4. If query includes "lẩu" or "nóng" or "tránh ngập"
+  // 5. If query includes "lẩu" or "nóng" or "tránh ngập"
   if (
+    parsed.category === 'hotpot' ||
     raw.includes('lẩu') ||
     norm.includes('lau') ||
     raw.includes('nóng') ||
@@ -426,10 +465,15 @@ export function mockAnalyzeIntent(query: string): MockIntentResult {
     norm.includes('tranh ngap') ||
     raw.includes('hotpot')
   ) {
-    return { category: 'hotpot', tag: 'dry_route' };
+    return {
+      category: 'hotpot',
+      tag: 'dry_route',
+      targetTime: parsed.targetTime,
+      cleanKeyword: parsed.cleanKeyword,
+    };
   }
 
-  // 5. If query includes "chill" or "hẹn hò"
+  // 6. If query includes "chill" or "hẹn hò"
   if (
     raw.includes('chill') ||
     raw.includes('hẹn hò') ||
@@ -437,21 +481,40 @@ export function mockAnalyzeIntent(query: string): MockIntentResult {
     raw.includes('view đẹp') ||
     norm.includes('view dep')
   ) {
-    return { category: 'cafe', tag: 'aesthetic' };
+    return {
+      category: 'cafe',
+      tag: 'aesthetic',
+      targetTime: parsed.targetTime,
+      cleanKeyword: parsed.cleanKeyword,
+    };
   }
 
-  // 6. Nướng / BBQ
+  // 7. Nướng / BBQ
   if (raw.includes('nướng') || norm.includes('nuong') || raw.includes('bbq')) {
-    return { category: 'bbq', tag: 'grilled_bbq' };
+    return {
+      category: 'bbq',
+      tag: 'grilled_bbq',
+      targetTime: parsed.targetTime,
+      cleanKeyword: parsed.cleanKeyword,
+    };
   }
 
-  // 7. Bánh mì / Ăn nhanh
+  // 8. Bánh mì / Ăn nhanh
   if (raw.includes('bánh mì') || norm.includes('banh mi') || raw.includes('burger') || raw.includes('fast food')) {
-    return { category: 'fast_food', tag: 'crispy_fast_food' };
+    return {
+      category: 'fast_food',
+      tag: 'crispy_fast_food',
+      targetTime: parsed.targetTime,
+      cleanKeyword: parsed.cleanKeyword,
+    };
   }
 
   // Default
-  return { category: 'all' };
+  return {
+    category: 'all',
+    targetTime: parsed.targetTime,
+    cleanKeyword: parsed.cleanKeyword,
+  };
 }
 
 // Popular culinary dishes and categories for quick filtering
@@ -487,6 +550,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
   userXp,
   isLoading = false,
 }) => {
+  const { isVi } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
@@ -494,14 +558,77 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
   const [smartDecision, setSmartDecision] = useState<SmartDecisionState | null>(null);
   const [isExecutingDecision, setIsExecutingDecision] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [displayedResults, setDisplayedResults] = useState<SearchResultItem[]>([]);
+  const [isTopCardCollapsed, setIsTopCardCollapsed] = useState<boolean>(false);
+  const [expandedVenueId, setExpandedVenueId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+
+  // Reset expanded sub-cards and top collapse when search query changes
+  useEffect(() => {
+    setExpandedVenueId(null);
+    setIsTopCardCollapsed(false);
+  }, [searchQuery]);
 
   // Synchronous mock intent analysis for immediate instant UI update
   const instantMockIntent = useMemo(() => mockAnalyzeIntent(searchQuery), [searchQuery]);
 
   // Smart Typeahead Auto-complete Suggestions (for rich natural language queries)
   const typeaheadSuggestions = useMemo(() => getSmartTypeaheadSuggestions(searchQuery), [searchQuery]);
+
+  // Helper to build real explainable routing decision state for any venue in the list
+  const getVenueDecisionState = (item: SearchResultItem): SmartDecisionState | null => {
+    if (!item.venue) return null;
+    const v = item.venue;
+    const localIntent = localIntentParser(searchQuery);
+    const dayType = new Date().getDay() === 0 || new Date().getDay() === 6 ? 'weekend' : 'weekday';
+    const targetHour = localIntent.targetTime ?? new Date().getHours();
+
+    // Check if it already exists in smartDecision.allRoutes
+    const existingRoute = smartDecision?.allRoutes?.find((r) => r.place.id === v.id);
+
+    const currentRoute: TrafficRouteResult = existingRoute || analyzeTrafficRoutes({
+      userLocation: currentLocation || { latitude: 21.0278, longitude: 105.8342 },
+      targetHour,
+      dayType,
+      places: [v as Place],
+    })[0];
+
+    const distKm = Number((currentRoute.distanceMeters / 1000).toFixed(1)) || 0.8;
+    const durationMins = currentRoute.estimatedDurationMinutes;
+
+    const optionPayload = {
+      name: v.name,
+      durationMins,
+      distanceKm: distKm,
+      trafficLevel: currentRoute.trafficLevel === 'smooth' ? ('Low' as const) : currentRoute.trafficLevel === 'moderate' ? ('Moderate' as const) : ('High' as const),
+      floodRisk: currentRoute.weatherFlood?.routeFloodRisk === 'high_flood' ? ('High' as const) : ('Low' as const),
+      address: v.address || v.district || '',
+      category: v.category || '',
+    };
+
+    const explanation = generateLocalExplanationFallback(
+      [optionPayload],
+      optionPayload,
+      {
+        rawQuery: searchQuery,
+        targetHour,
+        timeLabel: localIntent.timeLabel,
+        timeContext: localIntent.timeContext,
+        dayType,
+        dishCategory: localIntent.category,
+        isDifferent: false,
+      }
+    );
+
+    return {
+      bestRoute: currentRoute,
+      closestRoute: currentRoute,
+      isDifferent: false,
+      explanation,
+      rawQuery: searchQuery,
+      evaluatedPlacesCount: 1,
+      allRoutes: smartDecision?.allRoutes || [currentRoute],
+    };
+  };
 
   // Execute real decision engine pipeline (Intent -> Filter -> Traffic Routing -> Gemini Reasoning)
   const runDecisionEngine = async (queryText: string) => {
@@ -710,12 +837,24 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
       const isNoodle = instantMockIntent.category === 'noodle';
       const isBbq = instantMockIntent.category === 'bbq';
       const isFastFood = instantMockIntent.category === 'fast_food';
+      const isRice = instantMockIntent.category === 'rice';
 
       const mockMatches = places.filter((p) => {
         if (!p || typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return false;
         const norm = normalizeCategory(p);
         const name = (p.name || '').toLowerCase();
         const catLabel = (p.categoryLabel || '').toLowerCase();
+
+        if (isRice) {
+          return (
+            norm === 'RICE' ||
+            catLabel.includes('cơm') ||
+            catLabel.includes('rice') ||
+            name.includes('cơm') ||
+            name.includes('com') ||
+            name.includes('rice')
+          );
+        }
 
         if (isNoodle) {
           return (
@@ -802,7 +941,8 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
         }
 
         let smartBadge = '';
-        if (instantMockIntent.tag === 'spicy_noodle') smartBadge = '🍜 Mì cay & Mì bún nóng hổi';
+        if (instantMockIntent.tag === 'hearty_rice') smartBadge = '🍚 Cơm tấm, Cơm sườn & Cơm niêu';
+        else if (instantMockIntent.tag === 'spicy_noodle') smartBadge = '🍜 Mì cay & Mì bún nóng hổi';
         else if (instantMockIntent.tag === 'tasty_noodles') smartBadge = '🍜 Bún, Phở & Mì đặc sản';
         else if (instantMockIntent.tag === 'quiet') smartBadge = '📚 Yên tĩnh • Phù hợp học & làm việc';
         else if (instantMockIntent.tag === 'dry_route') smartBadge = '🍲 Lẩu nóng • Tuyến đường tránh ngập';
@@ -993,55 +1133,53 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
     return results;
   }, [normalizedQuery, searchQuery, places, currentLocation, parsedIntent, instantMockIntent]);
 
-  // 800ms AI routing & thinking simulation when search query changes
+  // Debounced background decision engine & NLP intent analysis (without circular dependency)
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
       setIsSearching(false);
-      setDisplayedResults([]);
       setParsedIntent(null);
       setSmartDecision(null);
       return;
     }
 
-    setIsSearching(true);
-    setDisplayedResults([]);
-
     let isMounted = true;
+    setIsSearching(true);
+
     const timer = setTimeout(async () => {
       if (!isMounted) return;
 
-      // 1. Set computed search results
-      setDisplayedResults(computedSearchResults);
-
-      // 2. Parse natural intent
-      if (isNaturalLanguageQuery(trimmed)) {
-        try {
-          const intent = await parseSearchIntentWithGemini(trimmed);
-          if (isMounted) {
-            setParsedIntent(intent);
-          }
-        } catch {
-          if (isMounted) {
-            setParsedIntent(null);
+      try {
+        // 1. Natural Language Intent parsing if needed
+        if (isNaturalLanguageQuery(trimmed)) {
+          try {
+            const intent = await parseSearchIntentWithGemini(trimmed);
+            if (isMounted && intent) {
+              setParsedIntent(intent);
+            }
+          } catch {
+            // Intent fallback already handled in service
           }
         }
-      } else {
-        if (isMounted) setParsedIntent(null);
-      }
 
-      // 3. Trigger Real Decision Engine Pipeline if matched smart scenario
-      if (isMounted) {
-        runDecisionEngine(trimmed);
-        setIsSearching(false);
+        // 2. Trigger Real Decision Engine Pipeline if matched smart scenario
+        if (isMounted) {
+          await runDecisionEngine(trimmed);
+        }
+      } catch (err) {
+        console.warn('Search execution error:', err);
+      } finally {
+        if (isMounted) {
+          setIsSearching(false);
+        }
       }
-    }, 800);
+    }, 250);
 
     return () => {
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [searchQuery, computedSearchResults]);
+  }, [searchQuery]);
 
   const handleSelectResult = (item: SearchResultItem) => {
     saveRecentSearch(item.title);
@@ -1092,7 +1230,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              const firstMatch = displayedResults.length > 0 ? displayedResults[0] : computedSearchResults[0];
+              const firstMatch = computedSearchResults[0];
               if (firstMatch) {
                 handleSelectResult(firstMatch);
               } else {
@@ -1101,11 +1239,19 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
             }
           }}
           onFocus={() => setIsOpen(true)}
-          placeholder={isListening ? 'Đang lắng nghe giọng nói...' : 'Bạn muốn đi đâu? (VD: Phở, Cà phê...)'}
+          placeholder={
+            isListening
+              ? isVi
+                ? 'Đang lắng nghe giọng nói...'
+                : 'Listening to your voice...'
+              : isVi
+              ? 'Bạn muốn đi đâu? (VD: Phở, Cà phê...)'
+              : 'Where do you want to go? (e.g., Pho, Cafe...)'
+          }
           className="bg-transparent border-none focus:outline-none w-full min-w-0 text-[13.5px] font-heading font-medium text-stone-800 placeholder:text-stone-400"
           id="input-google-maps-search"
           autoComplete="off"
-          aria-label="Tìm kiếm trên BiteQuest"
+          aria-label={isVi ? 'Tìm kiếm trên BiteQuest' : 'Search on BiteQuest'}
         />
 
         {/* Clear Button */}
@@ -1117,8 +1263,8 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
               inputRef.current?.focus();
             }}
             className="w-6 h-6 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-xs text-stone-600 transition-colors shrink-0 cursor-pointer"
-            aria-label="Xóa tìm kiếm"
-            title="Xóa nội dung"
+            aria-label={isVi ? 'Xóa tìm kiếm' : 'Clear search'}
+            title={isVi ? 'Xóa nội dung' : 'Clear query'}
           >
             ✕
           </button>
@@ -1133,8 +1279,16 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
               ? 'bg-red-500 text-white animate-pulse shadow-xs shadow-red-500/50'
               : 'hover:bg-stone-100 text-stone-500 hover:text-stone-800'
           }`}
-          title={isListening ? 'Dừng ghi âm' : 'Tìm kiếm bằng giọng nói'}
-          aria-label="Tìm bằng giọng nói"
+          title={
+            isListening
+              ? isVi
+                ? 'Dừng ghi âm'
+                : 'Stop recording'
+              : isVi
+              ? 'Tìm kiếm bằng giọng nói'
+              : 'Voice search'
+          }
+          aria-label={isVi ? 'Tìm bằng giọng nói' : 'Voice search'}
           id="btn-voice-search"
         >
           <span className="material-symbols-outlined text-[19px]">
@@ -1157,81 +1311,83 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
           className="absolute top-[calc(100%+6px)] left-0 right-0 z-50 bg-white rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-stone-200/90 overflow-hidden max-h-[75vh] flex flex-col animate-fade-in"
           id="google-maps-autocomplete-dropdown"
         >
-          {/* Quick Smart Actions Header */}
-          <div className="p-2 bg-gradient-to-r from-stone-50 via-white to-stone-50 border-b border-stone-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {onOpenRoulette && (
+          {/* Quick Smart Actions Header - Gracefully hidden when user enters query or scrolls */}
+          {!normalizedQuery && (
+            <div className="p-2 bg-gradient-to-r from-stone-50 via-white to-stone-50 border-b border-stone-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar transition-all duration-300 animate-fade-in">
+              {onOpenRoulette && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onOpenRoulette();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-950 border border-orange-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                >
+                  <span>🎲</span>
+                  <span>{isVi ? 'Hôm nay ăn gì?' : 'What to eat today?'}</span>
+                </button>
+              )}
+
+              {onOpenTraffic && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onOpenTraffic();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                >
+                  <span>🚦</span>
+                  <span>{isVi ? 'Né tắc đường' : 'Avoid traffic'}</span>
+                </button>
+              )}
+
+              {onOpenComparator && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onOpenComparator();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                >
+                  <span>⚖️</span>
+                  <span>{isVi ? 'So sánh các quán' : 'Compare venues'}</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
-                  setIsOpen(false);
-                  onOpenRoulette();
+                  onSearchQueryChange(isVi ? 'Phở' : 'Pho');
+                  setIsOpen(true);
                 }}
-                className="px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-950 border border-orange-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-heading font-medium shrink-0 transition-colors cursor-pointer"
               >
-                <span>🎲</span>
-                <span>Hôm nay ăn gì?</span>
+                {isVi ? '🍜 Phở ngon' : '🍜 Delicious Pho'}
               </button>
-            )}
 
-            {onOpenTraffic && (
               <button
                 type="button"
                 onClick={() => {
-                  setIsOpen(false);
-                  onOpenTraffic();
+                  onSearchQueryChange(isVi ? 'Cà phê' : 'Coffee');
+                  setIsOpen(true);
                 }}
-                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-heading font-medium shrink-0 transition-colors cursor-pointer"
               >
-                <span>🚦</span>
-                <span>Né tắc đường</span>
+                {isVi ? '☕ Cà phê view đẹp' : '☕ Scenic Coffee'}
               </button>
-            )}
-
-            {onOpenComparator && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  onOpenComparator();
-                }}
-                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-heading font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
-              >
-                <span>⚖️</span>
-                <span>So sánh các quán</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                onSearchQueryChange('Phở');
-                setIsOpen(true);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-heading font-medium shrink-0 transition-colors cursor-pointer"
-            >
-              🍜 Phở ngon
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                onSearchQueryChange('Cà phê');
-                setIsOpen(true);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-heading font-medium shrink-0 transition-colors cursor-pointer"
-            >
-              ☕ Cà phê view đẹp
-            </button>
-          </div>
+            </div>
+          )}
 
           {/* Scrollable Suggestion Body */}
           <div className="overflow-y-auto no-scrollbar py-2 divide-y divide-stone-100">
-            {/* Smart Typeahead Autocomplete Suggestions (Rich Contextual Prompts) */}
-            {typeaheadSuggestions.length > 0 && (
-              <div className="py-2 px-3 bg-amber-50/40 border-b border-amber-100/70">
+            {/* Smart Typeahead Autocomplete Suggestions (Rich Contextual Prompts) - Hidden when active query */}
+            {!normalizedQuery && typeaheadSuggestions.length > 0 && (
+              <div className="py-2 px-3 bg-amber-50/40 border-b border-amber-100/70 transition-all duration-300 animate-fade-in">
                 <div className="flex items-center gap-1 text-[10.5px] font-heading font-bold text-amber-900 uppercase tracking-wider mb-1.5">
                   <span>💡</span>
-                  <span>Gợi ý tìm kiếm theo ngữ cảnh</span>
+                  <span>{isVi ? 'Gợi ý tìm kiếm theo ngữ cảnh' : 'Contextual search prompts'}</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   {typeaheadSuggestions.map((prompt) => (
@@ -1247,7 +1403,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
                       <span className="text-amber-500 group-hover:translate-x-0.5 transition-transform text-xs">✨</span>
                       <span className="truncate flex-1">{prompt}</span>
                       <span className="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded-md font-bold shrink-0">
-                        Tìm ngay
+                        {isVi ? 'Tìm ngay' : 'Search'}
                       </span>
                     </button>
                   ))}
@@ -1257,112 +1413,187 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
 
             {/* Case A: Active Search Results or Loading State */}
             {normalizedQuery ? (
-              isSearching ? (
+              computedSearchResults.length > 0 ? (
+                <div className="py-1">
+                  {/* Real-time Explainable Decision Engine Result Card (Top Highlighted Route) */}
+                  {smartDecision && (
+                    !isTopCardCollapsed ? (
+                      <SmartDecisionCard
+                        decision={smartDecision}
+                        onSelectVenue={(venue) => {
+                          handleSelectResult({
+                            id: `venue_${venue.id}`,
+                            type: 'venue',
+                            title: venue.name,
+                            subtitle: venue.address || venue.district,
+                            latitude: venue.latitude,
+                            longitude: venue.longitude,
+                            venue,
+                          });
+                        }}
+                        isLoading={isExecutingDecision}
+                        onToggleCollapse={() => setIsTopCardCollapsed(true)}
+                      />
+                    ) : (
+                      <div
+                        onClick={() => setIsTopCardCollapsed(false)}
+                        className="mx-3.5 my-2 px-3.5 py-2.5 rounded-xl bg-amber-50/90 hover:bg-amber-100 border border-amber-200 text-stone-800 flex items-center justify-between cursor-pointer transition-all shadow-2xs group"
+                        title={isVi ? 'Bấm để mở lại phân tích lộ trình chi tiết' : 'Click to expand detailed route analysis'}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs">🧠</span>
+                          <span className="text-[12.5px] font-heading font-bold text-amber-950 truncate">
+                            {isVi ? 'Đề xuất:' : 'Suggestion:'} {smartDecision.bestRoute.place.name}
+                          </span>
+                          <span className="text-[10px] bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full shrink-0">
+                            {isVi ? 'Độ tin cậy' : 'Confidence'} {smartDecision.explanation?.confidenceScore ?? 94}%
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[11px] font-heading font-bold text-amber-800 shrink-0 group-hover:translate-y-0.5 transition-transform">
+                          <span>{isVi ? 'Mở chi tiết' : 'Details'}</span>
+                          <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
+                        </div>
+                      </div>
+                    )
+                  )}
+
+                  <div className="px-3.5 py-1 text-[11px] font-heading font-bold text-stone-400 uppercase tracking-wider flex items-center justify-between">
+                    <span>
+                      {isVi
+                        ? `Kết quả gợi ý (${computedSearchResults.length})`
+                        : `Suggested results (${computedSearchResults.length})`}
+                    </span>
+                    {isExecutingDecision && (
+                      <span className="text-[10px] text-[#FF6B35] font-normal flex items-center gap-1">
+                        <span className="animate-spin text-[9px]">🧭</span>{' '}
+                        {isVi ? 'Đang tối ưu tuyến đường...' : 'Optimizing route...'}
+                      </span>
+                    )}
+                  </div>
+                  {computedSearchResults
+                    .filter((item) => !smartDecision || item.venue?.id !== smartDecision.bestRoute.place.id)
+                    .map((item) => {
+                    const isExpanded = expandedVenueId === item.id;
+                    const venueDecision = isExpanded && item.venue ? getVenueDecisionState(item) : null;
+
+                    if (isExpanded && venueDecision) {
+                      return (
+                        <div key={item.id} className="relative transition-all">
+                          <SmartDecisionCard
+                            decision={venueDecision}
+                            onSelectVenue={() => handleSelectResult(item)}
+                            onToggleCollapse={() => setExpandedVenueId(null)}
+                            customBadgeTitle={isVi ? 'Phân tích tuyến đường & an toàn' : 'Route & Safety Analysis'}
+                          />
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="w-full px-3.5 py-2 flex items-center justify-between hover:bg-stone-50 text-left transition-colors group cursor-pointer"
+                        onClick={() => {
+                          if (item.type === 'venue' && item.venue) {
+                            setExpandedVenueId(item.id);
+                          } else {
+                            handleSelectResult(item);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-sm shrink-0 text-stone-700">
+                            {item.categoryGlyph || (item.type === 'district' ? '📍' : '🍽️')}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px] font-heading font-semibold text-stone-900 truncate">
+                                {item.title}
+                              </span>
+                              {item.type === 'district' && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-heading font-bold bg-blue-50 text-blue-600 shrink-0">
+                                  {isVi ? 'Khu vực' : 'District'}
+                                </span>
+                              )}
+                              {item.type === 'dish' && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-heading font-bold bg-amber-50 text-amber-700 shrink-0">
+                                  {isVi ? 'Món ngon' : 'Dish'}
+                                </span>
+                              )}
+                            </div>
+                            {item.subtitle && (
+                              <p className="text-[11.5px] text-stone-500 truncate mt-0.5">{item.subtitle}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right actions: Distance, Compare & Expand Chevron */}
+                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                          {typeof item.distanceMeters === 'number' && (
+                            <span className="text-[11px] font-medium text-[#FF6B35] font-heading">
+                              {item.distanceMeters < 1000
+                                ? `${item.distanceMeters}m`
+                                : `${(item.distanceMeters / 1000).toFixed(1)}km`}
+                            </span>
+                          )}
+
+                          {item.type === 'venue' && item.venue && onOpenComparator && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsOpen(false);
+                                onOpenComparator([item.venue!]);
+                              }}
+                              className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10.5px] font-heading font-bold border border-amber-200 transition-all cursor-pointer"
+                              title={isVi ? 'Thêm vào bảng so sánh' : 'Add to comparator'}
+                            >
+                              ⚖️ {isVi ? 'So sánh' : 'Compare'}
+                            </button>
+                          )}
+
+                          {item.type === 'venue' && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedVenueId(item.id);
+                              }}
+                              className="p-1 rounded-lg hover:bg-stone-200/80 text-stone-500 hover:text-stone-900 transition-colors flex items-center gap-0.5 text-[10.5px] font-heading cursor-pointer"
+                              title={isVi ? 'Bấm để xem đầy đủ chi tiết tuyến đường' : 'Click to view complete route details'}
+                            >
+                              <ChevronDown className="w-4 h-4 stroke-[2.2]" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : isSearching || isExecutingDecision ? (
                 <div className="py-8 px-4 flex flex-col items-center justify-center text-center animate-pulse" id="ai-search-loading-indicator">
                   <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-200 flex items-center justify-center text-2xl shadow-sm mb-3">
                     <span className="animate-spin text-xl">🧭</span>
                   </div>
                   <p className="text-xs font-heading font-bold text-[#FF6B35]">
-                    BiteQuest đang phân tích lộ trình & thời tiết...
+                    {isVi ? 'BiteQuest đang phân tích lộ trình & thời tiết...' : 'BiteQuest is analyzing route & weather...'}
                   </p>
                   <p className="text-[11px] text-stone-400 mt-1">
-                    Đang tính toán tuyến đường khô ráo & giao thông thời gian thực
+                    {isVi
+                      ? 'Đang tính toán tuyến đường khô ráo & giao thông thời gian thực'
+                      : 'Calculating dry routes & real-time traffic conditions'}
                   </p>
-                </div>
-              ) : displayedResults.length > 0 ? (
-                <div className="py-1">
-                  {/* Real-time Explainable Decision Engine Result Card (ONLY render if smart scenario matched) */}
-                  {smartDecision && (
-                    <SmartDecisionCard
-                      decision={smartDecision}
-                      onSelectVenue={(venue) => {
-                        handleSelectResult({
-                          id: `venue_${venue.id}`,
-                          type: 'venue',
-                          title: venue.name,
-                          subtitle: venue.address || venue.district,
-                          latitude: venue.latitude,
-                          longitude: venue.longitude,
-                          venue,
-                        });
-                      }}
-                      isLoading={isExecutingDecision}
-                    />
-                  )}
-
-                  <div className="px-3.5 py-1 text-[11px] font-heading font-bold text-stone-400 uppercase tracking-wider">
-                    Kết quả gợi ý ({displayedResults.length})
-                  </div>
-                  {displayedResults.map((item) => (
-                    <div
-                      key={item.id}
-                      className="w-full px-3.5 py-2 flex items-center justify-between hover:bg-stone-50 text-left transition-colors group"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleSelectResult(item)}
-                        className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-sm shrink-0 text-stone-700">
-                          {item.categoryGlyph || (item.type === 'district' ? '📍' : '🍽️')}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-heading font-semibold text-stone-900 truncate">
-                              {item.title}
-                            </span>
-                            {item.type === 'district' && (
-                              <span className="px-1.5 py-0.2 rounded text-[10px] font-heading font-bold bg-blue-50 text-blue-600 shrink-0">
-                                Khu vực
-                              </span>
-                            )}
-                            {item.type === 'dish' && (
-                              <span className="px-1.5 py-0.2 rounded text-[10px] font-heading font-bold bg-amber-50 text-amber-700 shrink-0">
-                                Món ngon
-                              </span>
-                            )}
-                          </div>
-                          {item.subtitle && (
-                            <p className="text-[11.5px] text-stone-500 truncate mt-0.5">{item.subtitle}</p>
-                          )}
-                        </div>
-                      </button>
-
-                      {/* Right actions: Distance & Quick Compare Button */}
-                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                        {typeof item.distanceMeters === 'number' && (
-                          <span className="text-[11px] font-medium text-[#FF6B35] font-heading">
-                            {item.distanceMeters < 1000
-                              ? `${item.distanceMeters}m`
-                              : `${(item.distanceMeters / 1000).toFixed(1)}km`}
-                          </span>
-                        )}
-                        {item.type === 'venue' && item.venue && onOpenComparator && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsOpen(false);
-                              onOpenComparator([item.venue!]);
-                            }}
-                            className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10.5px] font-heading font-bold border border-amber-200 transition-all cursor-pointer"
-                            title="Thêm vào bảng so sánh"
-                          >
-                            ⚖️ So sánh
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
                 </div>
               ) : (
                 <div className="py-6 px-4 text-center">
                   <span className="text-2xl">🔍</span>
                   <p className="text-xs font-heading font-semibold text-stone-700 mt-2">
-                    Không tìm thấy kết quả cho "{searchQuery}"
+                    {isVi ? `Không tìm thấy kết quả cho "${searchQuery}"` : `No results found for "${searchQuery}"`}
                   </p>
                   <p className="text-[11px] text-stone-500 mt-1">
-                    Thử tìm theo tên món (Phở, Bún, Cà phê), quận huyện hoặc tên quán.
+                    {isVi
+                      ? 'Thử tìm theo tên món (Phở, Bún, Cà phê), quận huyện hoặc tên quán.'
+                      : 'Try searching by dish (Pho, Coffee), district or venue name.'}
                   </p>
                 </div>
               )
@@ -1373,7 +1604,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
                 {recentSearches.length > 0 && (
                   <div className="py-1">
                     <div className="px-3.5 py-1 flex items-center justify-between text-[11px] font-heading font-bold text-stone-400 uppercase tracking-wider">
-                      <span>Tìm kiếm gần đây</span>
+                      <span>{isVi ? 'Tìm kiếm gần đây' : 'Recent searches'}</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5 px-3 py-1.5">
                       {recentSearches.map((item) => (
@@ -1388,7 +1619,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
                             type="button"
                             onClick={(e) => removeRecentSearch(e, item)}
                             className="text-stone-400 hover:text-stone-600 text-[10px] ml-0.5 cursor-pointer"
-                            aria-label="Xóa từ khóa"
+                            aria-label={isVi ? 'Xóa từ khóa' : 'Delete keyword'}
                           >
                             ✕
                           </button>
@@ -1401,7 +1632,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
                 {/* Popular Food Categories */}
                 <div className="py-1">
                   <div className="px-3.5 py-1 text-[11px] font-heading font-bold text-stone-400 uppercase tracking-wider">
-                    Khám phá món ngon đặc sản
+                    {isVi ? 'Khám phá món ngon đặc sản' : 'Explore popular food specialties'}
                   </div>
                   <div className="grid grid-cols-2 gap-1 px-2.5 py-1">
                     {POPULAR_DISHES.slice(0, 6).map((dish) => (
@@ -1428,7 +1659,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
                 {/* Popular Hanoi Foodie Neighborhoods */}
                 <div className="py-1">
                   <div className="px-3.5 py-1 text-[11px] font-heading font-bold text-stone-400 uppercase tracking-wider">
-                    Khu vực ẩm thực nổi tiếng Hà Nội
+                    {isVi ? 'Khu vực ẩm thực nổi tiếng Hà Nội' : 'Popular Hanoi foodie areas'}
                   </div>
                   <div className="max-h-48 overflow-y-auto no-scrollbar">
                     {HANOI_DISCOVERY_LOCATIONS.map((loc) => (
@@ -1450,7 +1681,7 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
                           <div className="text-[11px] text-stone-500 truncate">{loc.description}</div>
                         </div>
                         <span className="text-[10.5px] font-heading font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full shrink-0">
-                          Đến khu vực
+                          {isVi ? 'Đến khu vực' : 'Go to area'}
                         </span>
                       </button>
                     ))}
@@ -1464,14 +1695,16 @@ export const GoogleMapsSearchBar: React.FC<GoogleMapsSearchBarProps> = ({
           <div className="px-3.5 py-2 bg-stone-50 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-              Đang hiển thị {places.length} địa điểm trong tầm ngắm
+              {isVi
+                ? `Đang hiển thị ${places.length} địa điểm trong tầm ngắm`
+                : `Showing ${places.length} places on radar`}
             </span>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
               className="text-stone-600 font-heading font-semibold hover:text-stone-900 cursor-pointer"
             >
-              Đóng
+              {isVi ? 'Đóng' : 'Close'}
             </button>
           </div>
         </div>

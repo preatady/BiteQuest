@@ -3,8 +3,92 @@ import { Place } from '../types';
 import { UnifiedPlace } from './maps/types';
 import { normalizeCategory, normalizeVietnameseText } from './maps/categoryNormalizer';
 
-export type IntentCategory = 'cafe' | 'food' | 'fast_food' | 'any';
+export type IntentCategory = 'cafe' | 'food' | 'fast_food' | 'rice' | 'hotpot' | 'noodle' | 'any';
 export type IntentVibe = 'chill' | 'noisy' | 'romantic' | 'any';
+
+export interface LocalParsedIntent {
+  category: string;
+  targetTime: number | null;
+  timeContext?: 'early_morning' | 'morning' | 'noon' | 'afternoon' | 'evening' | 'night';
+  timeLabel?: string;
+  cleanKeyword: string;
+}
+
+/**
+ * Robust Client-Side NLP Fallback for Natural Language Culinary Intent
+ * Uses Regex to extract standard food keywords, time constraints (morning/afternoon/evening), and clean search keywords.
+ */
+export const localIntentParser = (query: string): LocalParsedIntent => {
+  const lowerQuery = (query || '').toLowerCase().trim();
+
+  // 1. Extract Time (e.g., "6h sáng", "8h", "20:00", "8 giờ tối", "6h chiều", "12h trưa", "12h đêm")
+  let targetTime: number | null = null;
+  let timeContext: 'early_morning' | 'morning' | 'noon' | 'afternoon' | 'evening' | 'night' | undefined = undefined;
+  let timeLabel: string | undefined = undefined;
+
+  // Regex pattern matching: "6h sáng", "6 giờ sáng", "18:00", "6h30", "6h", "8 giờ", "20h"
+  const complexTimeMatch = lowerQuery.match(/(\d{1,2})(?:[:h](\d{2}))?\s*(h|giờ)?\s*(sáng|trưa|chiều|tối|đêm|am|pm)?/);
+  
+  if (complexTimeMatch) {
+    let hour = parseInt(complexTimeMatch[1], 10);
+    const minute = complexTimeMatch[2] ? parseInt(complexTimeMatch[2], 10) : 0;
+    const period = (complexTimeMatch[4] || '').toLowerCase();
+
+    if (!isNaN(hour)) {
+      if (period === 'chiều' || period === 'tối' || period === 'pm') {
+        if (hour < 12) hour += 12;
+      } else if (period === 'đêm') {
+        if (hour >= 8 && hour <= 11) hour += 12;
+        else if (hour === 12) hour = 0;
+      } else if (period === 'sáng' || period === 'am') {
+        if (hour === 12) hour = 0;
+      } else if (period === 'trưa') {
+        if (hour < 10) hour = 12;
+      }
+
+      if (hour >= 0 && hour <= 23) {
+        targetTime = hour;
+
+        if (hour >= 4 && hour < 7) {
+          timeContext = 'early_morning';
+          timeLabel = `${hour}h${minute > 0 ? minute : ''} Sáng sớm`;
+        } else if (hour >= 7 && hour < 11) {
+          timeContext = 'morning';
+          timeLabel = `${hour}h${minute > 0 ? minute : ''} Sáng`;
+        } else if (hour >= 11 && hour <= 13) {
+          timeContext = 'noon';
+          timeLabel = `${hour}h${minute > 0 ? minute : ''} Trưa`;
+        } else if (hour > 13 && hour < 18) {
+          timeContext = 'afternoon';
+          timeLabel = `${hour}h${minute > 0 ? minute : ''} Chiều`;
+        } else if (hour >= 18 && hour < 22) {
+          timeContext = 'evening';
+          timeLabel = `${hour}h${minute > 0 ? minute : ''} Tối`;
+        } else {
+          timeContext = 'night';
+          timeLabel = `${hour}h${minute > 0 ? minute : ''} Đêm`;
+        }
+      }
+    }
+  }
+
+  // 2. Extract Food Category (Regex mapping)
+  let category = 'all';
+  if (/(cơm|rice)/.test(lowerQuery)) category = 'rice';
+  else if (/(lẩu|hotpot)/.test(lowerQuery)) category = 'hotpot';
+  else if (/(cafe|cà phê|coffee|trà|tea)/.test(lowerQuery)) category = 'cafe_drink';
+  else if (/(phở|bún|mì|noodle|hủ tiếu|ramen)/.test(lowerQuery)) category = 'noodle';
+  else if (/(bánh mì|burger|fast food|ăn nhanh)/.test(lowerQuery)) category = 'fast_food';
+  else if (/(nướng|bbq)/.test(lowerQuery)) category = 'bbq';
+
+  // 3. Extract purely the search keyword (remove time context)
+  const cleanKeyword = lowerQuery
+    .replace(/(?:lúc|vào lúc|khoảng|vào)\s*\d{1,2}(?:[:h]\d{2})?\s*(?:h|giờ)?\s*(?:sáng|trưa|chiều|tối|đêm|am|pm)?/g, '')
+    .replace(/\b(?:sáng|trưa|chiều|tối|đêm)\b/g, '')
+    .trim();
+
+  return { category, targetTime, timeContext, timeLabel, cleanKeyword };
+};
 
 export interface SearchIntent {
   category: IntentCategory;
@@ -12,17 +96,28 @@ export interface SearchIntent {
   vibe: IntentVibe;
   confidence?: number;
   source?: 'gemini' | 'rule-fallback';
+  targetTime?: number | null;
+  cleanKeyword?: string;
 }
 
 /**
  * Fast client-side rule-based parser fallback for natural language culinary intent
  */
 export function parseIntentRuleBasedFallback(rawQuery: string): SearchIntent {
+  const local = localIntentParser(rawQuery);
   const norm = normalizeVietnameseText(rawQuery.toLowerCase());
 
-  // 1. Detect Category
+  // 1. Detect Category from localIntentParser & keywords
   let category: IntentCategory = 'any';
-  if (
+  if (local.category === 'cafe_drink') {
+    category = 'cafe';
+  } else if (local.category === 'rice') {
+    category = 'food';
+  } else if (local.category === 'hotpot') {
+    category = 'food';
+  } else if (local.category === 'noodle') {
+    category = 'food';
+  } else if (
     norm.includes('cafe') ||
     norm.includes('ca phe') ||
     norm.includes('tra ') ||
@@ -128,6 +223,8 @@ export function parseIntentRuleBasedFallback(rawQuery: string): SearchIntent {
     vibe,
     confidence: 0.8,
     source: 'rule-fallback',
+    targetTime: local.targetTime,
+    cleanKeyword: local.cleanKeyword,
   };
 }
 
@@ -180,43 +277,46 @@ export async function parseSearchIntentWithGemini(query: string): Promise<Search
   }
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const fetchPromise = (async (): Promise<SearchIntent> => {
+      const response = await fetch('/api/search/intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: query.trim() }),
+      });
 
-    const response = await fetch('/api/search/intent', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query: query.trim() }),
-      signal: controller.signal,
-    });
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
 
-    clearTimeout(timeoutId);
+      const data = await response.json();
+      if (data && data.intent && typeof data.intent === 'object') {
+        const { category, maxDistanceKm, vibe } = data.intent;
+        const validCategories: IntentCategory[] = ['cafe', 'food', 'fast_food', 'any'];
+        const validVibes: IntentVibe[] = ['chill', 'noisy', 'romantic', 'any'];
 
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
+        return {
+          category: validCategories.includes(category) ? category : 'any',
+          maxDistanceKm: typeof maxDistanceKm === 'number' && maxDistanceKm > 0 ? maxDistanceKm : 50,
+          vibe: validVibes.includes(vibe) ? vibe : 'any',
+          confidence: data.confidence || 0.95,
+          source: 'gemini',
+        };
+      }
+      throw new Error('Invalid intent response');
+    })();
 
-    const data = await response.json();
-    if (data && data.intent && typeof data.intent === 'object') {
-      const { category, maxDistanceKm, vibe } = data.intent;
-      const validCategories: IntentCategory[] = ['cafe', 'food', 'fast_food', 'any'];
-      const validVibes: IntentVibe[] = ['chill', 'noisy', 'romantic', 'any'];
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Intent parsing timeout (3000ms exceeded)')), 3000)
+    );
 
-      return {
-        category: validCategories.includes(category) ? category : 'any',
-        maxDistanceKm: typeof maxDistanceKm === 'number' && maxDistanceKm > 0 ? maxDistanceKm : 50,
-        vibe: validVibes.includes(vibe) ? vibe : 'any',
-        confidence: data.confidence || 0.95,
-        source: 'gemini',
-      };
-    }
+    const result = await Promise.race([fetchPromise, timeoutPromise]);
+    return result;
   } catch (error) {
-    // Graceful fallback to client-side rule engine
+    console.warn('Gemini intent API failed or timed out (429/Network). Using Local Fallback.');
+    return parseIntentRuleBasedFallback(query);
   }
-
-  return parseIntentRuleBasedFallback(query);
 }
 
 /**
@@ -229,6 +329,32 @@ export function venueMatchesIntentCategory(venue: Place | UnifiedPlace, intentCa
 
   if (intentCategory === 'cafe') {
     return canonical === 'CAFE_DRINK';
+  }
+
+  if (intentCategory === 'rice') {
+    const normName = normalizeVietnameseText(venue.name || '').toLowerCase();
+    const catLabel = normalizeVietnameseText(venue.categoryLabel || '').toLowerCase();
+    return canonical === 'RICE' || normName.includes('com') || catLabel.includes('com') || normName.includes('rice');
+  }
+
+  if (intentCategory === 'hotpot') {
+    const normName = normalizeVietnameseText(venue.name || '').toLowerCase();
+    const catLabel = normalizeVietnameseText(venue.categoryLabel || '').toLowerCase();
+    return canonical === 'HOTPOT' || normName.includes('lau') || catLabel.includes('lau') || normName.includes('hotpot');
+  }
+
+  if (intentCategory === 'noodle') {
+    const normName = normalizeVietnameseText(venue.name || '').toLowerCase();
+    const catLabel = normalizeVietnameseText(venue.categoryLabel || '').toLowerCase();
+    return (
+      ['NOODLE', 'PHO'].includes(canonical) ||
+      normName.includes('pho') ||
+      normName.includes('bun') ||
+      normName.includes('mi ') ||
+      catLabel.includes('pho') ||
+      catLabel.includes('bun') ||
+      catLabel.includes('mi')
+    );
   }
 
   if (intentCategory === 'food') {
