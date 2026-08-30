@@ -143,30 +143,51 @@ export function generateLocalExplanationFallback(
   const closest = context?.closestOption;
   const confidenceScore = computeConfidenceScore(selectedOption, context);
 
+  // Check if a faster option existed that had high traffic or flood risk
+  const fasterRiskyOption = options?.find(
+    (o) =>
+      selectedOption &&
+      o !== selectedOption &&
+      o.durationMins < selectedOption.durationMins &&
+      (String(o.floodRisk).toLowerCase() === 'high' || String(o.trafficLevel).toLowerCase() === 'high')
+  );
+
   let headline = `✨ Tuyến đường tối ưu đến ${safeName}`;
   const bulletPoints: string[] = [];
 
-  // 1. Phân tích khung giờ & tình trạng giao thông thực tế
-  bulletPoints.push(
-    `⏰ Khung giờ ${timeInsight.timeDesc}: ${timeInsight.trafficFlow}.`
-  );
-
-  // 2. Phân tích cự ly & thời gian di chuyển thực tế
-  bulletPoints.push(
-    `📍 Cự ly thực tế ${safeDist} km: Thời gian di chuyển dự kiến chỉ ~${safeDuration} (${timeInsight.crowdAdvice}).`
-  );
-
-  // 3. Phân tích an toàn / né tắc / ngập úng
-  if (isDifferent && closest) {
-    const diffMins = Math.max(1, Math.round(selectedOption.durationMins - closest.durationMins));
-    headline = `✨ Lựa chọn thông minh: Né tắc đường & tối ưu thời gian`;
+  if (fasterRiskyOption) {
+    headline = 'Nhanh nhất chưa chắc đã tốt nhất';
     bulletPoints.push(
-      `⚖️ So sánh lộ trình: Tránh khu vực có mật độ xe cao của ${closest.name}, chênh lệch chỉ ~${diffMins} phút nhưng đường đi êm và thoáng hơn.`
+      `🛡️ Né tránh rủi ro: Tuyến đường nhanh hơn (${fasterRiskyOption.durationMins} phút) đang bị ${
+        String(fasterRiskyOption.floodRisk).toLowerCase() === 'high' ? 'nguy cơ ngập úng' : 'ùn tắc nghiêm trọng'
+      }.`
     );
-  } else if (isFloodSafe) {
     bulletPoints.push(
-      `🛡️ Tuyến đường khô ráo, mặt đường thông thoáng và không có cảnh báo ngập úng cục bộ.`
+      `🚗 Tuyến đường đến ${safeName} khô ráo, lưu thông êm ái, hạn chế tối đa nguy cơ ùn tắc.`
     );
+  } else {
+    // 1. Phân tích khung giờ & tình trạng giao thông thực tế
+    bulletPoints.push(
+      `⏰ Khung giờ ${timeInsight.timeDesc}: ${timeInsight.trafficFlow}.`
+    );
+
+    // 2. Phân tích cự ly & thời gian di chuyển thực tế
+    bulletPoints.push(
+      `📍 Cự ly thực tế ${safeDist} km: Thời gian di chuyển dự kiến chỉ ~${safeDuration} (${timeInsight.crowdAdvice}).`
+    );
+
+    // 3. Phân tích an toàn / né tắc / ngập úng
+    if (isDifferent && closest) {
+      const diffMins = Math.max(1, Math.round(selectedOption.durationMins - closest.durationMins));
+      headline = `✨ Lựa chọn thông minh: Né tắc đường & tối ưu thời gian`;
+      bulletPoints.push(
+        `⚖️ So sánh lộ trình: Tránh khu vực có mật độ xe cao của ${closest.name}, chênh lệch chỉ ~${diffMins} phút nhưng đường đi êm và thoáng hơn.`
+      );
+    } else if (isFloodSafe) {
+      bulletPoints.push(
+        `🛡️ Tuyến đường khô ráo, mặt đường thông thoáng và không có cảnh báo ngập úng cục bộ.`
+      );
+    }
   }
 
   // 4. Lưu ý ngữ cảnh món ăn (Ví dụ: Lẩu lúc sáng sớm)

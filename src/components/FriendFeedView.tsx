@@ -122,10 +122,36 @@ export const FriendFeedView: React.FC<FriendFeedViewProps> = ({
             </div>
 
             {/* Content & Social Quotes */}
-            <div className="px-4 pb-4 pt-2 flex flex-col gap-3">
-              <p className="text-sm text-[#2D2926] leading-relaxed font-normal">
-                "{bite.caption}"
-              </p>
+            <div className="px-4 pb-4 pt-2 flex flex-col gap-2.5">
+              {/* Dish Name & Manual/AI badge if available */}
+              {(bite.dishName || (bite.tags && bite.tags.length > 0)) && (
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  {bite.dishName && (
+                    <div className="font-heading text-sm font-bold text-[#FF6B35] flex items-center gap-1.5">
+                      <span>🍽️</span>
+                      <span>{bite.dishName}</span>
+                    </div>
+                  )}
+                  {bite.tags && bite.tags.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {bite.tags.map((tag, tIdx) => (
+                        <span
+                          key={tIdx}
+                          className="bg-[#FF6B35]/10 text-[#FF6B35] text-[11px] font-semibold font-heading px-2 py-0.5 rounded-full"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {bite.caption && (
+                <p className="text-sm text-[#2D2926] leading-relaxed font-normal">
+                  "{bite.caption}"
+                </p>
+              )}
 
               {/* Quick Emoji Reaction Buttons */}
               <div className="flex items-center gap-2 flex-wrap pt-1">

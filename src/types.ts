@@ -177,11 +177,14 @@ export interface BiteCheckin {
   placeAddress: string;
   district: string;
   foodCategory: FoodCategory;
+  dishName?: string;
+  tags?: string[];
   imageUrl: string;
   displayImageUrl?: string;
   filterId?: 'original' | 'warm_bite' | 'fresh' | 'night_bite' | string;
   stickerId?: string;
   isGalleryUpload?: boolean;
+  autoAiDetect?: boolean;
   cloudinaryPublicId?: string;
   caption?: string;
   createdAt: string;

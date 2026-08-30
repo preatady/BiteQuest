@@ -97,6 +97,10 @@ const VerifyBiteRequestSchema = z.object({
   accuracy: z.number().min(0).max(5000).default(15),
   selectedPlaceId: z.string().max(100).optional(),
   isGalleryUpload: z.boolean().optional().default(false),
+  autoAiDetect: z.boolean().optional().default(true),
+  skipAiRecognition: z.boolean().optional().default(false),
+  customDishName: z.string().max(150).optional(),
+  customTags: z.array(z.string()).optional(),
 });
 
 const GeminiPerceptionOutputSchema = z.object({
@@ -123,6 +127,9 @@ const CheckinRequestSchema = z.object({
   filterId: z.string().max(50).optional().default('original'),
   stickerId: z.string().max(50).optional(),
   isGalleryUpload: z.boolean().optional().default(false),
+  autoAiDetect: z.boolean().optional().default(true),
+  dishName: z.string().max(150).optional(),
+  tags: z.array(z.string()).optional(),
   caption: z.string().max(500).optional(),
   tasteRating: z.enum(['tasty', 'normal', 'bad']).optional().default('tasty'),
   priceRating: z.enum(['good_value', 'fair', 'expensive']).optional().default('good_value'),
@@ -694,7 +701,20 @@ async function startServer() {
         return res.status(400).json({ error: 'Invalid verification request parameters', details: parsedBody.error.format() });
       }
 
-      const { imageBase64, latitude, longitude, accuracy, selectedPlaceId, isGalleryUpload } = parsedBody.data;
+      const {
+        imageBase64,
+        latitude,
+        longitude,
+        accuracy,
+        selectedPlaceId,
+        isGalleryUpload,
+        autoAiDetect = true,
+        skipAiRecognition = false,
+        customDishName,
+        customTags,
+      } = parsedBody.data;
+
+      const isManualMode = autoAiDetect === false || skipAiRecognition === true;
 
       // Dynamic search radius based on GPS accuracy (clamped between 40m and 300m)
       const dynamicRadius = Math.min(300, Math.max(40, accuracy * 2.5));
@@ -718,20 +738,20 @@ async function startServer() {
         confidence: number;
         tags: string[];
       } = {
-        isFoodOrDrink: false, // Default is strictly false (fail-closed)
-        dishName: 'Món ăn đặc sản Hà Nội',
+        isFoodOrDrink: isManualMode ? true : false,
+        dishName: customDishName || 'Món ăn đặc sản Hà Nội',
         foodCategory: 'noodles',
         categoryLabel: 'Bún / Phở',
         visibleVenueText: '',
         visiblePriceMin: 35000,
         visiblePriceMax: 55000,
         ambianceType: 'Quán ăn',
-        confidence: 0.50,
-        tags: ['Món ngon', 'Hà Nội', 'Đậm vị'],
+        confidence: isManualMode ? 0.90 : 0.50,
+        tags: customTags && customTags.length > 0 ? customTags : ['Món ngon', 'Hà Nội', 'Đậm vị'],
       };
 
       const ai = getGeminiClient();
-      if (ai && imageBase64) {
+      if (ai && imageBase64 && !isManualMode) {
         try {
           const mimeMatch = imageBase64.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/);
           const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
@@ -896,11 +916,12 @@ Nhiệm vụ: Trích xuất thông tin có cấu trúc chính xác từ hình �
 
       // Visual Evidence Gate (Trust Gate F - Fail-Closed Evaluation):
       // Visual evidence is valid IF:
-      // 1. NOT explicit non-food (Gemini returned isFoodOrDrink === false)
-      // 2. AND (Gemini confirmed food/drink OR verified signage/OCR venue match)
+      // 1. In manual mode (user explicitly tagged and submitted photo)
+      // 2. OR NOT explicit non-food AND (Gemini confirmed food/drink OR verified signage/OCR venue match)
       const hasPositiveVisualEvidence =
-        !geminiExplicitNonFood &&
-        (geminiConfirmedFood || hasSignageEvidence);
+        isManualMode ||
+        (!geminiExplicitNonFood &&
+        (geminiConfirmedFood || hasSignageEvidence));
 
       // Determine Server Authoritative Verification Decision
       let verificationDecision: 'VERIFIED_ELIGIBLE' | 'UNVERIFIED_GALLERY' | 'EVIDENCE_UNAVAILABLE' | 'EVIDENCE_INSUFFICIENT' | 'REJECTED';
@@ -1014,6 +1035,9 @@ Nhiệm vụ: Trích xuất thông tin có cấu trúc chính xác từ hình �
         filterId,
         stickerId,
         isGalleryUpload,
+        autoAiDetect,
+        dishName,
+        tags,
         caption,
         tasteRating,
         priceRating,
@@ -1120,6 +1144,9 @@ Nhiệm vụ: Trích xuất thông tin có cấu trúc chính xác từ hình �
         placeAddress: targetPlace ? targetPlace.address : 'Hà Nội',
         district: targetPlace ? targetPlace.district : district || 'Cầu Giấy',
         foodCategory: (foodCategory as FoodCategory) || 'noodles',
+        dishName: dishName ? dishName.trim() : undefined,
+        tags: tags && tags.length > 0 ? tags : undefined,
+        autoAiDetect: autoAiDetect !== undefined ? autoAiDetect : true,
         imageUrl: finalImageUrl,
         displayImageUrl: finalImageUrl,
         filterId: filterId || 'original',

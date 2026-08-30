@@ -218,7 +218,12 @@ export const PostBiteExperienceModal: React.FC<PostBiteExperienceModalProps> = (
                 <p className="text-xs text-[#7A7265] truncate mt-0.5">
                   {result.bite?.placeAddress || journeyProgress.districtName}
                 </p>
-                <div className="flex items-center gap-2 mt-1.5 text-[11px] text-[#594139]">
+                <div className="flex items-center gap-1.5 flex-wrap mt-1.5 text-[11px] text-[#594139]">
+                  {result.bite?.dishName && (
+                    <span className="bg-[#FF6B35]/15 text-[#C84B18] px-2 py-0.5 rounded font-bold">
+                      🍽️ {result.bite.dishName}
+                    </span>
+                  )}
                   <span className="bg-[#F5F2EB] px-2 py-0.5 rounded font-medium">
                     {result.bite?.foodCategory === 'coffee'
                       ? '☕ Café / Trà'
@@ -232,6 +237,13 @@ export const PostBiteExperienceModal: React.FC<PostBiteExperienceModalProps> = (
                       ? '🛵 Quán ngõ / Ăn vặt'
                       : '🍴 Ẩm thực'}
                   </span>
+                  {result.bite?.tags && result.bite.tags.length > 0 && (
+                    result.bite.tags.slice(0, 2).map((t, idx) => (
+                      <span key={idx} className="bg-[#F5F2EB] text-[#FF6B35] px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                        {t}
+                      </span>
+                    ))
+                  )}
                 </div>
               </div>
             </div>

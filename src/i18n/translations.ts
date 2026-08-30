@@ -142,6 +142,19 @@ export interface TranslationDictionary {
   cameraChooseGallery: string;
   cameraRetryPermission: string;
   cameraOptional: string;
+  autoAiToggle: string;
+  autoAiOnDesc: string;
+  autoAiOffDesc: string;
+  dishNameLabel: string;
+  dishNamePlaceholder: string;
+  tagsLabel: string;
+  tagsPlaceholder: string;
+  addTagBtn: string;
+  suggestedTags: string;
+  manualModeBadge: string;
+  aiModeBadge: string;
+  switchModeManual: string;
+  switchModeAi: string;
 
   // Passport & Fog of War
   passportTitle: string;
@@ -310,6 +323,19 @@ export const translations: Record<Language, TranslationDictionary> = {
     cameraChooseGallery: 'Chọn ảnh từ thư viện máy',
     cameraRetryPermission: 'Thử kết nối lại camera',
     cameraOptional: '(Tùy chọn)',
+    autoAiToggle: 'Tự động nhận diện AI',
+    autoAiOnDesc: 'Gemini AI tự động quét món ăn & không gian',
+    autoAiOffDesc: 'Chế độ thủ công: Tự đặt tên món, viết cap & gắn thẻ',
+    dishNameLabel: 'Tên món ăn / đồ uống:',
+    dishNamePlaceholder: 'Ví dụ: Phở bò tái lăn, Bún chả nướng than...',
+    tagsLabel: 'Gắn thẻ & Hashtags:',
+    tagsPlaceholder: 'Nhập hashtag (ví dụ: #viewdep, #re)...',
+    addTagBtn: 'Thêm thẻ',
+    suggestedTags: 'Thẻ gợi ý:',
+    manualModeBadge: '✍️ Nhập tay & Gắn tag',
+    aiModeBadge: '✨ AI Tự nhận diện',
+    switchModeManual: 'Chuyển sang Nhập tay',
+    switchModeAi: 'Quét tự động bằng Gemini AI',
 
     // Passport & Fog of War
     passportTitle: 'Hộ chiếu Ẩm thực',
@@ -476,6 +502,19 @@ export const translations: Record<Language, TranslationDictionary> = {
     cameraChooseGallery: 'Choose photo from library',
     cameraRetryPermission: 'Retry camera connection',
     cameraOptional: '(Optional)',
+    autoAiToggle: 'Auto AI Recognition',
+    autoAiOnDesc: 'Gemini AI automatically detects dishes & ambiance',
+    autoAiOffDesc: 'Manual mode: Set dish name, caption & tags yourself',
+    dishNameLabel: 'Dish / Drink Name:',
+    dishNamePlaceholder: 'e.g., Rare beef pho, Salted cream coffee...',
+    tagsLabel: 'Tags & Hashtags:',
+    tagsPlaceholder: 'Add hashtag (e.g. #scenic, #cheap)...',
+    addTagBtn: 'Add Tag',
+    suggestedTags: 'Suggested Tags:',
+    manualModeBadge: '✍️ Manual Tagging',
+    aiModeBadge: '✨ Auto AI Recognition',
+    switchModeManual: 'Switch to Manual Entry',
+    switchModeAi: 'Auto Detect with Gemini AI',
 
     // Passport & Fog of War
     passportTitle: 'Culinary Passport',

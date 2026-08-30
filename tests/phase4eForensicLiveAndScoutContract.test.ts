@@ -106,14 +106,17 @@ describe('BiteQuest V6 Phase 4E: Forensic Live Venue & Scout Contract Audit', ()
       demoFixtureCount +
       testFixtureCount;
 
-    expect(totalUniqueCanonicalIds).toBe(108);
+    const expectedSeededCount = INITIAL_PLACES.length;
+    const expectedTotal = expectedSeededCount + 98 + 2;
+
+    expect(totalUniqueCanonicalIds).toBe(expectedTotal);
     expect(liveProviderCurrentFetchCount).toBe(98);
     expect(registryCacheProviderCount).toBe(0);
     expect(communityRealCount).toBe(2);
-    expect(seededRegistryCount).toBe(8);
+    expect(seededRegistryCount).toBe(expectedSeededCount);
     expect(demoFixtureCount).toBe(0);
     expect(testFixtureCount).toBe(0);
-    expect(sum).toBe(108);
+    expect(sum).toBe(expectedTotal);
     expect(sum).toBe(totalUniqueCanonicalIds);
   });
 

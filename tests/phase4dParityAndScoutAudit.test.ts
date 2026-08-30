@@ -120,10 +120,10 @@ describe('BiteQuest V6 Phase 4D: Venue-Source Parity & Scout Semantics Audit', (
 
     expect(providerVenueCount).toBe(98);
     expect(registryVenueCount).toBe(100);
-    expect(places.length).toBe(8);
+    expect(places.length).toBe(INITIAL_PLACES.length);
     expect(unpromotedNearbyPOICount).toBe(100);
-    expect(allLoadedVenues.length).toBe(108);
-    expect(todayEngineInputCount).toBe(108);
+    expect(allLoadedVenues.length).toBe(INITIAL_PLACES.length + 100);
+    expect(todayEngineInputCount).toBe(INITIAL_PLACES.length + 100);
   });
 
   it('2. Proves Map and Today ID Parity (same canonical discovery pool)', () => {

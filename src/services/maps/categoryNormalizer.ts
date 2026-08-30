@@ -231,10 +231,17 @@ export function classifyVenue(venueInput: {
   const rawList = Array.isArray(venue.categories) ? venue.categories.map((c) => String(c).toLowerCase().trim()) : [];
   const commCat = (venue.communityCategory || '').toLowerCase().trim();
 
-  // Direct check if raw string matches canonical metadata labels or keys
-  const directUpper = (venue.category || venue.name || '').toUpperCase().trim();
-  if (directUpper in CANONICAL_CATEGORIES) {
-    return { category: directUpper as CanonicalCategory, source: 'PROVIDER_EXPLICIT', confidence: 1.0 };
+  // Direct check if input string or explicit specific category matches canonical metadata
+  if (typeof venueInput === 'string') {
+    const directUpper = venueInput.toUpperCase().trim();
+    if (directUpper in CANONICAL_CATEGORIES) {
+      return { category: directUpper as CanonicalCategory, source: 'PROVIDER_EXPLICIT', confidence: 1.0 };
+    }
+  } else if (venue.category) {
+    const catUpper = venue.category.toUpperCase().trim();
+    if (catUpper in CANONICAL_CATEGORIES && catUpper !== 'RESTAURANT' && catUpper !== 'OTHER_FOOD') {
+      return { category: catUpper as CanonicalCategory, source: 'PROVIDER_EXPLICIT', confidence: 1.0 };
+    }
   }
 
   // Check matching by shortLabel or label
@@ -339,10 +346,10 @@ export function classifyVenue(venueInput: {
     return { category: 'BBQ', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
 
-  // RICE (Cơm / Xôi / Cháo / Bánh cuốn / Bánh xèo)
+  // RICE (Cơm / Xôi / Cháo)
   if (
-    /(?:^|[\s,./\-_(])(com|com\s+tam|com\s+rang|com\s+ga|com\s+nieu|com\s+van\s+phong|com\s+suon|com\s+binh\s+dan|xoi|chao|chao\s+long|chao\s+ech|banh\s+cuon|banh\s+xeo|banh\s+can|banh\s+khot|banh\s+beo)(?:$|[\s,./\-_)])/i.test(normName) ||
-    /(?:^|[\s,./\-_(])(cơm|xôi|cháo|bánh cuốn|bánh xèo)(?:$|[\s,./\-_)])/i.test(name)
+    /(?:^|[\s,./\-_(])(com|com\s+tam|com\s+rang|com\s+ga|com\s+nieu|com\s+van\s+phong|com\s+suon|com\s+binh\s+dan|xoi|chao|chao\s+long|chao\s+ech)(?:$|[\s,./\-_)])/i.test(normName) ||
+    /(?:^|[\s,./\-_(])(cơm|xôi|cháo)(?:$|[\s,./\-_)])/i.test(name)
   ) {
     return { category: 'RICE', source: 'NAME_KEYWORD', confidence: 0.85 };
   }
@@ -392,18 +399,18 @@ export function classifyVenue(venueInput: {
   if (upperCat in CANONICAL_CATEGORIES) {
     return { category: upperCat as CanonicalCategory, source: 'PROVIDER_EXPLICIT', confidence: 0.95 };
   }
-  if (rawCat === 'cafe_drink' || rawCat.includes('coffee') || rawCat.includes('cafe')) return { category: 'CAFE_DRINK', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat === 'cafe_drink' || rawCat.includes('coffee') || rawCat.includes('cafe') || rawCat.includes('tea')) return { category: 'CAFE_DRINK', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'pho') return { category: 'PHO', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'noodles' || rawCat === 'noodle') return { category: 'NOODLE', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'hotpot' || rawCat === 'lau') return { category: 'HOTPOT', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'bbq' || rawCat === 'nuong' || rawCat === 'bbq_hotpot') return { category: 'BBQ', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'rice' || rawCat === 'com') return { category: 'RICE', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
-  if (rawCat === 'dessert' || rawCat === 'bakery' || rawCat === 'bakery_dessert') return { category: 'BAKERY_DESSERT', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
-  if (rawCat === 'burger_western' || rawCat === 'fast_food') return { category: 'FAST_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
-  if (rawCat === 'bar' || rawCat === 'drinks' || rawCat === 'bar_beer' || rawCat === 'beer') return { category: 'BAR_BEER', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
-  if (rawCat === 'vegetarian' || rawCat === 'vegan' || rawCat === 'chay') return { category: 'VEGETARIAN', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
-  if (rawCat === 'supermarket' || rawCat === 'grocery' || rawCat.includes('supermarket')) return { category: 'OTHER_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
-  if (rawCat === 'restaurant') return { category: 'RESTAURANT', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat.includes('dessert') || rawCat.includes('bakery') || rawCat.includes('ice_cream') || rawCat === 'bakery_dessert') return { category: 'BAKERY_DESSERT', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat.includes('fast_food') || rawCat.includes('burger') || rawCat === 'burger_western') return { category: 'FAST_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat.includes('bar') || rawCat.includes('pub') || rawCat.includes('beer') || rawCat === 'drinks' || rawCat === 'bar_beer') return { category: 'BAR_BEER', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat.includes('vegetarian') || rawCat.includes('vegan') || rawCat.includes('chay')) return { category: 'VEGETARIAN', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat.includes('supermarket') || rawCat.includes('grocery') || rawCat.includes('convenience')) return { category: 'OTHER_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
+  if (rawCat.includes('restaurant')) return { category: 'RESTAURANT', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
   if (rawCat === 'street_food' || rawCat === 'other_food') return { category: 'OTHER_FOOD', source: 'PROVIDER_EXPLICIT', confidence: 0.90 };
 
   // 4. Generic Fallback (Priority 4)

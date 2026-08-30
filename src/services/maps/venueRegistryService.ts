@@ -43,19 +43,25 @@ export class VenueRegistryService {
   private firestoreDb: FirestoreDbLike | null = null;
   private primaryProvider: PlaceProvider | null = null;
 
-  constructor(primaryProvider?: PlaceProvider, firestoreDb?: FirestoreDbLike | null) {
+  constructor(
+    primaryProvider?: PlaceProvider,
+    firestoreDb?: FirestoreDbLike | null,
+    options?: { autoHydrateSeed?: boolean }
+  ) {
     if (primaryProvider) this.primaryProvider = primaryProvider;
     if (firestoreDb) this.firestoreDb = firestoreDb;
 
-    // Pre-hydrate curated directory places into memory spatial index
-    for (const p of INITIAL_PLACES) {
-      this.registerPlace(p);
-    }
+    if (options?.autoHydrateSeed) {
+      // Pre-hydrate curated directory places into memory spatial index
+      for (const p of INITIAL_PLACES) {
+        this.registerPlace(p);
+      }
 
-    // Pre-hydrate tri-region venues (Hanoi, Central, South) for 100% instant local discovery
-    for (const v of TRI_REGION_VENUES) {
-      if (typeof v.latitude === 'number' && typeof v.longitude === 'number') {
-        this.upsertCandidatePOI(v, v.provider || 'bitequest_tri_region');
+      // Pre-hydrate tri-region venues (Hanoi, Central, South) for 100% instant local discovery
+      for (const v of TRI_REGION_VENUES) {
+        if (typeof v.latitude === 'number' && typeof v.longitude === 'number') {
+          this.upsertCandidatePOI(v, v.provider || 'bitequest_tri_region');
+        }
       }
     }
   }
@@ -569,6 +575,30 @@ export class VenueRegistryService {
       { latitude, longitude }
     );
 
+    // 10km Discovery Boundary Enforcement
+    if (effectiveAnchor.isRealUserLocation && distanceToAnchor > 10000) {
+      return {
+        venues: [],
+        provenance: {
+          source: 'UNAVAILABLE',
+          provider: 'None (Boundary Exceeded)',
+          isDemoMode,
+          externalApi: false,
+          registryCount: this.memoryVenues.size,
+          providerFetchedCount: 0,
+          communityCount: 0,
+          finalVenueCount: 0,
+          cacheHits: 0,
+          cacheMisses: 0,
+          discoveryAnchor: {
+            ...effectiveAnchor,
+            distanceToQueryMeters: distanceToAnchor,
+          },
+          warning: 'DISCOVERY_BOUNDARY_EXCEEDED: Requested query exceeds maximum 10km radius from real user discovery anchor',
+        },
+      };
+    }
+
     const isFresh = !forceRefresh && this.isAreaFresh(latitude, longitude);
     let provenanceSource: ProvenanceSource = 'REGISTRY_CACHE';
     let providerFetchedCount = 0;
@@ -695,4 +725,4 @@ export class VenueRegistryService {
 }
 
 // Singleton server instance
-export const venueRegistry = new VenueRegistryService();
+export const venueRegistry = new VenueRegistryService(undefined, null, { autoHydrateSeed: true });

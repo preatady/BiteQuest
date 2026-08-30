@@ -134,7 +134,14 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
       return cached.places.slice(0, limit);
     }
 
+    if (process.env.BITEQUEST_DEMO_MODE === 'true') {
+      return INITIAL_PLACES.slice(0, limit);
+    }
+
     if (!effectiveKey) {
+      if (process.env.NODE_ENV === 'production' && !process.env.BITEQUEST_DEMO_MODE) {
+        throw new Error('GEOAPIFY_SERVER_KEY_UNCONFIGURED: Missing Geoapify API key in production mode');
+      }
       return this.fetchFromOverpassOrLocal(latitude, longitude, radiusMeters, limit);
     }
 
@@ -158,6 +165,9 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
 
       const res = await fetch(url);
       if (!res.ok) {
+        if (process.env.NODE_ENV === 'production' && !process.env.BITEQUEST_DEMO_MODE) {
+          throw new Error(`GEOAPIFY_REQUEST_FAILED: HTTP status ${res.status} (${res.statusText || 'Error'})`);
+        }
         return this.fetchFromOverpassOrLocal(latitude, longitude, radiusMeters, limit);
       }
 
@@ -166,6 +176,9 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
       // Resilient per-feature validation: Extract raw features array
       const rawFeatures: any[] = Array.isArray(json?.features) ? json.features : [];
       if (rawFeatures.length === 0) {
+        if (process.env.NODE_ENV === 'production' && !process.env.BITEQUEST_DEMO_MODE) {
+          return [];
+        }
         return this.fetchFromOverpassOrLocal(latitude, longitude, radiusMeters, limit);
       }
 
@@ -235,7 +248,10 @@ export class GeoapifyPlaceProvider implements PlaceProvider {
       if (this.cache.length > 20) this.cache.shift();
 
       return sanitized.slice(0, limit);
-    } catch {
+    } catch (err) {
+      if (process.env.NODE_ENV === 'production' && !process.env.BITEQUEST_DEMO_MODE) {
+        throw err;
+      }
       return this.fetchFromOverpassOrLocal(latitude, longitude, radiusMeters, limit);
     }
   }
